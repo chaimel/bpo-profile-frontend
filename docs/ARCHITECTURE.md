@@ -5,7 +5,7 @@
 **Database:** PostgreSQL  
 **Hosting shape (later):** two apps, one database, object storage for media
 
-This document describes how the two apps fit together. It is not a scaffold.
+This document describes how the two apps fit together and the frontend file structure to use when implementation starts. It is not a scaffold.
 
 The product requirements come from [BPO Profile.pdf](BPO%20Profile.pdf): discovery and profile relationships (pp. 14-25), search priorities (p. 23), measurement (p. 37), and accessibility (pp. 38-39). Nuxt, Laravel, PostgreSQL, cookie authentication, and the workflows below are implementation decisions that support that brief; the PDF does not prescribe a stack. Delivery phases follow [PLAN.md](PLAN.md).
 
@@ -55,6 +55,176 @@ Nuxt owns pages, SEO HTML, and UI. Laravel owns users, profiles, search queries,
 - Talk to Laravel only through a typed API client
 - Responsive brand components and accessible interactions, including keyboard navigation, visible focus, labeled forms, descriptive errors, appropriate alt text, and status indicators that do not depend on color alone
 - Browser measurement of actual displayed profiles, search-result impressions, and user actions; fetching a public API response does not itself count as a view
+
+### Frontend file structure
+
+Follow the organization used in `myblog/frontend`: route files live in `app/pages/`, feature UI lives in `app/components/features/`, and each feature's `Index.vue` composes its own sections. For example, `features/home/Index.vue` imports and renders `features/home/Banner.vue`.
+
+The following is the planned layout inside `frontend/`. Only the documentation exists here today; create implementation files as their features are built. The feature names below are BPO Profile examples, using the same organization as the reference project.
+
+```text
+frontend/
+|-- docs/                         # Planning documents
+|-- app/
+|   |-- app.vue                   # App shell: layout and current page
+|   |-- pages/                    # Routes and page-level orchestration
+|   |   |-- index.vue             # Loads features/home/Index.vue
+|   |   |-- companies/
+|   |   |   |-- index.vue         # Loads features/companies/Index.vue
+|   |   |   `-- [slug].vue        # Loads features/company/Index.vue
+|   |   `-- professionals/
+|   |       |-- index.vue         # Loads features/professionals/Index.vue
+|   |       `-- [slug].vue        # Loads features/professional/Index.vue
+|   |-- components/
+|   |   |-- base/                 # UI primitives: MButton, MInput, MModal
+|   |   |-- core/                 # Shared composed UI: search, profile cards
+|   |   |-- layout/               # Header, Footer, dashboard navigation
+|   |   `-- features/
+|   |       |-- home/
+|   |       |   |-- Index.vue     # Composes the home sections
+|   |       |   |-- Banner.vue
+|   |       |   `-- DirectorySearch.vue
+|   |       |-- companies/
+|   |       |   |-- Index.vue     # Company directory
+|   |       |   |-- Filters.vue
+|   |       |   `-- list/
+|   |       |       |-- Index.vue # Composes results and pagination
+|   |       |       `-- Items.vue
+|   |       |-- company/
+|   |       |   |-- Index.vue     # Company profile
+|   |       |   |-- Overview.vue
+|   |       |   `-- Team.vue
+|   |       |-- professionals/   # Professional directory and its sections
+|   |       `-- professional/    # Professional profile and its sections
+|   |-- layouts/                 # Page shells: default, dashboard, admin
+|   |-- composables/
+|   |   |-- api/                 # Typed API access
+|   |   |-- app/                 # App-wide behavior, such as modal state
+|   |   `-- features/            # Reusable feature behavior
+|   |-- plugins/                 # App integration, such as the API client
+|   |-- middleware/              # Route auth and onboarding checks
+|   |-- types/                   # api/, app/, base/, features/ type groups
+|   |-- data/                    # Static UI content; no live directory copy
+|   |-- stores/                  # Shared state when needed
+|   `-- assets/
+|       `-- scss/
+|           |-- main.scss        # Global stylesheet entry
+|           |-- _component.scss  # Shared M-component styles
+|           `-- base/
+|               |-- _index.scss # Forwards the base partials in order
+|               |-- _fonts.scss # Font loading
+|               |-- _colors.scss # Palette and CSS custom properties
+|               |-- _normalize.scss # Browser baseline
+|               |-- _reset.scss # Project reset
+|               |-- _preset.scss # Tokens and document defaults
+|               |-- _typography.scss # Type scale and text utilities
+|               `-- _layout.scss # Shared containers and layout helpers
+|-- public/                      # Files served directly
+`-- nuxt.config.ts
+```
+
+Apply the same page-to-feature pattern to auth, onboarding, dashboards, admin, and later resource pages. Add folders as those routes are implemented, following the phases in [PLAN.md](PLAN.md).
+
+#### Page and feature composition
+
+Keep route files small. They select the feature, set page metadata/layout/middleware, and handle route parameters, page-level data loading, and SEO where needed. Pass fetched data to the feature through props; reusable request logic belongs in composables and the typed API client.
+
+For the home route, `app/pages/index.vue` loads the feature entry component:
+
+```vue
+<script setup lang="ts">
+import Home from '@/components/features/home/Index.vue'
+</script>
+
+<template>
+  <Home />
+</template>
+```
+
+Then `app/components/features/home/Index.vue` assembles its sections:
+
+```vue
+<script setup lang="ts">
+import Banner from './Banner.vue'
+import DirectorySearch from './DirectorySearch.vue'
+</script>
+
+<template>
+  <div class="home">
+    <Banner />
+    <DirectorySearch />
+  </div>
+</template>
+```
+
+These snippets illustrate composition only; page data, SEO, and section implementations are added during development.
+
+#### Component placement and naming
+
+- `pages/`: route entry files, using lowercase `index.vue` and dynamic names such as `[slug].vue`.
+- `components/features/<feature>/Index.vue`: the feature entry component. Use capital `Index.vue`, import it under a descriptive name such as `Home`, and explicitly import its section components using relative paths.
+- `components/features/<feature>/Banner.vue` and similar files: sections used by that feature. Keep them beside its `Index.vue`; a larger subsection can have its own folder and `Index.vue`, as shown by `companies/list/`.
+- `components/base/`: small reusable UI primitives, following the reference project's `MButton.vue`, `MInput.vue`, and similar naming.
+- `components/core/`: composed components reused across features. For example, a company card shared by home and directory results belongs here; a home-only banner stays in `features/home/`.
+- `components/layout/`: shared header, footer, sidebar, and navigation components. `layouts/` assembles those into page shells.
+
+Keep API access behind the typed client and authorization in Laravel as described below. This folder convention organizes UI; it does not change the system's responsibilities.
+
+### SCSS structure and ownership
+
+Use the SCSS organization from `myblog/frontend/app/assets/scss/` shown in the tree above. Global foundations and shared controls have one stylesheet entry; feature, core, and layout components keep their own presentation in `<style lang="scss" scoped>` blocks.
+
+When implementation starts, load the global entry once through `nuxt.config.ts`:
+
+```ts
+export default defineNuxtConfig({
+  css: ['~/assets/scss/main.scss'],
+})
+```
+
+In `app/assets/scss/main.scss`, load the foundations before the shared component styles:
+
+```scss
+@use 'base';
+@use 'component';
+```
+
+In `base/_index.scss`, preserve the reference project's base order:
+
+```scss
+@forward 'fonts';
+@forward 'colors';
+@forward 'normalize';
+@forward 'reset';
+@forward 'preset';
+@forward 'typography';
+@forward 'layout';
+```
+
+- `_fonts.scss` owns font loading; `_preset.scss` owns font-family tokens, shared radius/spacing tokens, and document defaults. Use BPO Profile's Poppins/Calibri roles and fallbacks from [SETUP.md](SETUP.md#typography-and-responsive-layout).
+- `_colors.scss` owns the palette and exposes semantic CSS custom properties on `:root`, following the reference's color-map pattern. Define BPO Profile's blue `#2389C2`, slate `#394454`, and black `#1E1E1E` here, then use tokens such as `var(--brand)` and `var(--text-primary)` in components.
+- `_normalize.scss` and `_reset.scss` establish the browser baseline. `_typography.scss` defines the responsive type scale and text utilities; `_layout.scss` owns shared containers such as `.section` and `.wrapper`, gutters, and layout helpers.
+- `_component.scss` owns shared `M*` control styles and their variants/states, using `m-` prefixed selectors such as `.m-button` and `.m-input`. Keep those shared rules centralized rather than duplicating them in each control's scoped block.
+- Each feature section owns its layout and responsive rules. For example, `features/home/Banner.vue` styles its banner; `features/home/Index.vue` styles only the composition of home sections when needed. Route files stay focused on page orchestration.
+- Core and layout components use scoped SCSS for their own presentation and consume the same global tokens. Keep selectors tied to the component's root class; shared design changes belong in the global partials.
+- Use `@use` and `@forward` for Sass modules. Do not import `main.scss` or other CSS-emitting global partials into every component. Component styles consume the shared CSS custom properties directly; any future Sass-only helpers should be imported explicitly where needed.
+
+For example, the style block inside `app/components/features/home/Banner.vue` could be:
+
+```vue
+<style lang="scss" scoped>
+.banner {
+  color: var(--text-primary);
+
+  &__title {
+    color: var(--brand);
+    font-family: var(--font-display);
+  }
+}
+</style>
+```
+
+The banner template uses the matching `banner` and `banner__title` classes. This example assumes `_preset.scss` defines `--font-display` for Poppins. All SCSS paths and snippets here describe the future implementation.
 
 ### Suggested route groups
 

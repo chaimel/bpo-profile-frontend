@@ -69,6 +69,8 @@ Exact `.env` keys belong in the repos when they exist, not here.
 ## 5. Frontend setup intent
 
 - Nuxt 4 with TypeScript
+- Use the [frontend file structure in ARCHITECTURE.md](ARCHITECTURE.md#frontend-file-structure): `app/pages/` loads feature entry components from `app/components/features/`; each feature's `Index.vue` composes its own sections, such as `home/Banner.vue`.
+- Use SCSS with the [stylesheet structure and ownership in ARCHITECTURE.md](ARCHITECTURE.md#scss-structure-and-ownership). When scaffolding, add a compatible Sass compiler, load `~/assets/scss/main.scss` once through the Nuxt `css` setting, and use scoped SCSS for feature sections. Verify that both global and component styles compile before building out the pages.
 - Server-rendered public pages so profiles are indexable
 - A small API module (fetch wrappers) rather than scattering URLs
 - Brand tokens from the brief (PDF pp. 26–28): blue `#2389C2`, slate `#394454`, black `#1E1E1E`; typography includes Poppins and Calibri
@@ -156,7 +158,7 @@ Keep accepted non-spam, non-deleted provider inquiries as the source for contact
 | --- | --- |
 | `docs/PLAN.md` | What and why, phases |
 | `docs/DATABASE.md` | Tables and rules |
-| `docs/ARCHITECTURE.md` | How Nuxt and Laravel meet |
+| `docs/ARCHITECTURE.md` | How Nuxt and Laravel meet; frontend folders and page/feature/component conventions |
 | `docs/API.md` | Endpoints and payloads |
 | `docs/SETUP.md` | This file |
 
