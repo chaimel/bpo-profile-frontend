@@ -83,13 +83,13 @@ Phase 1 is the public directory launch, including the minimum claim and verifica
 
 ### 4.1 Public discovery — Phase 1, with later additions
 
-- Home with hero search, popular services, industries, locations, how it works, and Get Listed CTA. Featured company/professional placements are Phase 2.
+- Home with hero search, popular services, industries, locations, Why BPO Profile, how it works, and a company-listing CTA (PDF p. 18). Hero primary action: **Find a BPO**; secondary: **Get Listed**; offer **Find a Sales Pro** as an alternate discovery path (PDF pp. 23, 35). Featured company/professional placements and resource previews are Phase 2.
 - Find a BPO: keyword search plus filters and sort.
 - BPO company directory with result cards.
 - Sales professional directory with result cards.
 - Service, industry, and location indexes that link to useful filtered results. Curated SEO landing pages (country → region/city) are Phase 2.
 - Phase 2: combined landing pages only where content is real (service + location, industry + service). No thin generated pages.
-- Phase 2: resources listing and article pages (CMS-lite).
+- Phase 2: resources listing and article pages (CMS-lite), covering outsourcing and buyer guides, industry insights, company stories, sales/business-development insights, and case studies/success stories (PDF pp. 20, 31–32).
 - Pricing comparison page for listing packages, clearly labeling future capabilities and manual company-plan assignment; checkout is Phase 3.
 - Contact Us.
 - Static trust pages: about, terms, privacy.
@@ -99,7 +99,7 @@ Phase 1 is the public directory launch, including the minimum claim and verifica
 Public company profile behaves like a small professional site:
 
 - Header: logo, name, verification, primary location, primary CTA.
-- About / overview.
+- About / overview, including optional company-supplied client proof or attributed testimonials as profile copy (PDF p. 16); public buyer reviews remain later.
 - Services, industries, capabilities, locations.
 - Company size, work model, languages, technology.
 - Why choose us / differentiators.
@@ -111,11 +111,11 @@ Public company profile behaves like a small professional site:
 
 ### 4.3 Sales professional profiles — Phase 1
 
-- Header: photo, name, title, company, location, verification, Connect CTA.
+- Header: photo, name, title, company, location/time zone, verification, Connect CTA.
 - About, expertise, services represented, industries, markets served, languages, experience highlights.
 - Company affiliation block.
 - Professional links (LinkedIn, website).
-- Contact options: inquiry form, request a quote, visit company, share profile.
+- Contact options: inquiry form, ask a question, request a quote, visit company, share profile.
 - Profiles feel professional, not social-media-like. No public feed, likes, or comments at launch.
 
 ### 4.4 Lead generation — Phase 1
@@ -136,12 +136,15 @@ Buyer accounts, saved profiles, multi-provider RFQs, and in-app messaging are no
 
 ### 4.5 Accounts and dashboards — Phase 1
 
-- Register / sign in (Laravel Sanctum SPA session from the Nuxt app).
+- Register / sign in through Laravel Sanctum SPA sessions. Every fresh sign-in uses a password followed by an emailed code, including company users, sales professionals, account-only claim/invitation users, and platform admins; no trusted-device bypass at launch.
 - Registration paths:
   - Create a company (becomes company admin).
   - Register as a sales professional with required `company_id` and `job_title`; create a draft profile with `affiliation_status = pending`.
   - Create an ordinary account for claim/invitation onboarding through `POST /api/register`; this adds no buyer role or company membership.
   - Invite-only platform admin.
+- Registration creates an unverified account and the appropriate draft records, returns `201` with `next_action = login`, and does not sign the user in. Password acceptance starts a session-bound email challenge (`202`); a successful code check completes sign-in (`200`) and sets `email_verified_at` on first verification. Protected routes remain unavailable until then.
+- Authentication uses a server-side session with an `HttpOnly` cookie (`Secure` in production, `SameSite=Lax`); the separate CSRF cookie remains readable by the frontend. Do not return access tokens in JSON or store them in localStorage/sessionStorage. Cookie scope, code expiry, attempt/resend limits, and API details are defined in the [auth flow](ARCHITECTURE.md#5-auth-flow) and [setup intent](SETUP.md#4-auth-setup-intent).
+- Password reset/change, email change, account deletion/restoration, and platform-role changes invalidate prior sessions and pending challenges. Authorization always uses the current account, role, and accepted membership.
 - Company dashboard: edit company profile, manage locations/services/industries, manage team, view inquiries, view basic stats.
 - Sales dashboard: edit own profile, view own inquiries, view basic stats.
 - An email-verified company owner/admin or platform admin reviews pending professional affiliations. Approval of a self-registered applicant requires their verified email and adds accepted company membership. Only platform admins publish approved affiliations. Affiliation approval and platform verification are separate decisions.
@@ -174,6 +177,8 @@ Freemium company listing plans exist in data from Phase 1, with admin-managed as
 | Premium | Company | Intended featured eligibility, promotional slots, advanced analytics, and final ranking tie-breaker; placements/analytics start in Phase 2, paid enforcement in Phase 3 |
 | Pro listing | Sales professional | Phase 3/future only: optional individual boost; requires a separate individual-plan assignment model before implementation |
 
+Enhanced lead-generation tools are a future Premium direction (PDF pp. 26, 38); define their scope and entitlement model before offering them as available benefits.
+
 Premium placement never overrides relevance, completeness, verification, location/service match, or quality. It is the final product-ranking tie-breaker, followed only by a stable record ID for deterministic ordering (PDF p. 23).
 
 ### 4.8 Platform administration — Phase 1, with later additions
@@ -193,7 +198,7 @@ Premium placement never overrides relevance, completeness, verification, locatio
 - Direct messaging and meeting scheduling.
 - Compare BPOs.
 - Client RFQs and multi-provider inquiries.
-- Reviews and public testimonials (company-supplied testimonials may exist as static profile text).
+- Buyer-submitted reviews and testimonials. Company-supplied client proof can appear in Phase 1 within `companies.overview`, labeled as company-provided content and distinct from platform verification.
 - CRM integrations.
 - Full lead CRM for companies.
 - Intelligent matching.
@@ -281,6 +286,8 @@ SEO from day one:
 - Internal links between company, people, and available service/industry/location indexes. Extend to curated landing pages in Phase 2.
 - Do not generate empty combination pages.
 
+Organic growth also includes shareable company/professional profile links and, as content grows in Phase 2, partner and industry-publication outreach, interviews, company stories, resource partnerships, and digital PR (PDF p. 36). These are editorial and promotion activities alongside the site, not additional launch application modules.
+
 ---
 
 ## 8. Phases
@@ -297,7 +304,7 @@ SEO from day one:
 
 Ship a usable public directory and the minimum write-path:
 
-- Auth and email verification (company admin + sales professional + platform admin, plus accounts awaiting claim/invitation onboarding)
+- Password plus emailed-code sign-in and first-login email verification (company admin + sales professional + platform admin, plus accounts awaiting claim/invitation onboarding)
 - Taxonomies and locations
 - Company and sales profiles (create, edit, publish)
 - Public home, search, directories, profile pages
@@ -314,7 +321,7 @@ This is the first public launch and includes the brief's launch trust features (
 
 ### Phase 2 — Content, growth, and enhanced analytics
 
-- Resources / articles
+- Resources / articles across the content pillars in section 4.1
 - SEO landing pages populated from real data
 - Featured placements
 - Enhanced dashboard analytics (breakdowns and trends for impressions, views, clicks, inquiries, and conversion rates)
@@ -342,7 +349,7 @@ This is the first public launch and includes the brief's launch trust features (
 
 In priority order:
 
-1. Users, roles, Sanctum auth and email verification
+1. Users, roles, Sanctum sessions, password plus emailed-code sign-in, and first-login email verification
 2. Services, industries, locations, and other taxonomies
 3. Company entity and public company profile
 4. Sales professional entity with pending/approved affiliation and team invitation acceptance
@@ -362,9 +369,13 @@ Out of Phase 1 even if useful:
 
 Phase 1 acceptance checks:
 
+- Every account type must complete password and emailed-code checks before accessing protected routes. Registration and a password-only challenge grant no authenticated session; first successful code verification marks the email verified without awarding a profile verification badge.
+- Session cookies are `HttpOnly` and `Secure` in production; the readable CSRF cookie and header still protect browser writes. Access tokens never enter localStorage/sessionStorage or JSON response payloads.
+- Expired, reused, replaced, exhausted, or differently session-bound codes fail. Resend does not reset attempt counts or expiry; account and IP limits work across instances. Reset, email change, and deletion/restoration invalidate old sessions and challenges.
 - A buyer can discover a company or professional and submit a valid inquiry without an account; a mismatched professional/company target is rejected.
 - Pending professionals remain draft and cannot publish; affiliation approval creates membership without granting company-administration rights.
 - Claim and invitation tokens require the intended verified email, expire, are single-use, and cannot produce duplicate professionals or conflicting ownership.
+- Concurrent deletion and affiliation/invitation/claim acceptance cannot recreate access. Restoring an account grants neither old-session access nor editing/inbox/statistics access through a retained approved profile link without accepted membership.
 - Admins can manually verify both company and professional identity; ownership, affiliation approval, publication, and verification remain distinct states.
 - Search uses the complete ranking order in section 7; duplicate analytics retries do not inflate counts, and inquiries cannot be counted through browser-submitted events.
 - Public flows work by keyboard and on mobile, with accessible forms and useful empty/error states as detailed in `SETUP.md` (PDF pp. 38–39).
@@ -385,6 +396,7 @@ These are implementation defaults, not requirements prescribed by the PDF. Chang
 8. **English-first UI.** Languages listed on profiles are capabilities, not a translated product in Phase 1.
 9. **Media** is logo, cover, and professional photo stored as files referenced from the API. No video in Phase 1.
 10. **Company plans exist in data** (`basic`, `professional`, `premium`) with a default of `basic`. Payment provider and any individual Pro plan are Phase 3 or later.
+11. **Every fresh account sign-in requires a password and emailed code.** Sanctum uses an `HttpOnly` server-session cookie; the first successful code check verifies the email. The PDF does not prescribe this authentication mechanism or its code limits.
 
 ---
 
@@ -406,10 +418,13 @@ These defaults are treated as decided so database and API work can proceed; they
 2. Buyers stay **anonymous inquirers** in Phase 1. No buyer accounts.
 3. **No checkout in Phase 1.** Plans exist as fields. Platform admins apply upgrades manually until Phase 3 billing.
 4. **Phase 1 is public launch.** Company claims, affiliation approval, completeness, and manual verification ship together.
+5. **Password plus emailed-code sign-in for all account types.** An `HttpOnly` Sanctum session is authenticated only after the code succeeds; first-login email verification is distinct from company/professional identity review.
 
 | PDF pages | Requirement carried into this plan |
 | --- | --- |
-| 16, 22 | Complete professional profiles with company affiliation and contact paths |
+| 16, 22 | Company client proof and complete professional profiles with company affiliation, time zone, and contact paths |
+| 18–20, 23, 35 | Homepage discovery actions, directories, and service/industry/location navigation |
+| 20, 31–32, 36 | Resource content pillars and organic growth through shareable profiles and editorial partnerships |
 | 23 | Relevance, completeness, verification, location/service match, quality, then premium ranking |
 | 25 | Launch company claims, verification, and profile completeness |
 | 26 | Future networking features, outside the directory launch |

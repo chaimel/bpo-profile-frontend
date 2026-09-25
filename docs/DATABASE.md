@@ -35,6 +35,7 @@ company_claims ← companies / users
 claim_tokens ← company_claims
 team_invitations ← companies / professionals / users
 profile_events (analytics)
+login_challenges ← users (pending password/code login)
 ```
 
 ---
@@ -78,7 +79,9 @@ profile_events (analytics)
 
 A sales professional who also runs the listing is `owner` or `admin` on `company_users` **and** has a `professionals` row linked to the same user.
 
-Every company-scoped authorization check requires an active user, a non-deleted company, and `company_users.accepted_at IS NOT NULL`. Pending or rejected affiliation grants no company/team/inquiry access. Own-profile draft editing is permitted by the linked `user_id`, but cannot change `company_id`, affiliation review fields, verification, or premium placement. Only platform admins set `published` or `suspended`; an approved, email-verified professional may submit `pending_review` or return to `draft`, without overriding an admin suspension.
+Every protected request requires a non-deleted, email-verified user and a session with the current `auth_version`. Company permissions additionally require a non-deleted company and an accepted membership with the required role. Own-professional access requires a matching `user_id` and non-deleted profile/company. Editing an approved affiliation requires accepted membership in that company. Own-professional inbox and statistics access require both approved affiliation and accepted membership. Without membership, the linked user may edit only a private profile with `status = draft` and `affiliation_status IN (pending, rejected)`; this exception grants no publication, inbox, or statistics access. Independent accepted owner/admin permissions remain valid through company-scoped routes. Restoring a user or company does not turn a retained `professionals.user_id` link into permission to edit an approved or published profile.
+
+Own-profile writes cannot change `company_id`, affiliation review fields, verification, or premium placement. Only platform admins set `published` or `suspended`; a professional with approved affiliation, verified email, and accepted membership may submit `pending_review` or return to `draft`, without overriding an admin suspension.
 
 Buyers have no rows in `users` at launch.
 
@@ -96,8 +99,9 @@ Buyers have no rows in `users` at launch.
 | last_name | varchar(100) | |
 | email | varchar(255) | unique |
 | email_verified_at | timestamptz | nullable |
-| password | varchar(255) | |
-| remember_token | varchar(100) | nullable |
+| password | varchar(255) | Laravel-supported password hash; never plaintext |
+| auth_version | bigint | default 0; monotonically incremented for session/challenge revocation |
+| remember_token | varchar(100) | nullable; persistent remember-me disabled in Phase 1 |
 | last_login_at | timestamptz | nullable |
 | created_at | timestamptz | |
 | updated_at | timestamptz | |
@@ -105,7 +109,7 @@ Buyers have no rows in `users` at launch.
 
 Indexes: unique `email`, index `platform_role`.
 
-Sanctum personal access tokens use the default `personal_access_tokens` table.
+Phase 1 SPA authentication uses server-side cookie sessions after both password and email code succeed. Registration leaves `email_verified_at = NULL`; first successful code verification sets it. Sanctum's `personal_access_tokens` table may be installed by the framework, but token issuance is not part of this first-party login flow. Public payloads never expose password hashes, `auth_version`, or challenge secrets.
 
 ### 4.2 `plans`
 
@@ -161,6 +165,8 @@ No payments table in Phase 1. Admin sets `companies.plan_id` and `companies.plan
 | updated_at | timestamptz | |
 | deleted_at | timestamptz | soft delete |
 
+Company-provided client proof/testimonials from the brief (PDF p. 16) can be stored as attributed text within `overview` at launch. This does not add a buyer-review table or imply platform verification of those statements.
+
 **company_size:** `1_10`, `11_50`, `51_200`, `201_500`, `501_1000`, `1000_plus`, `unknown`
 
 Indexes:
@@ -185,7 +191,11 @@ Indexes:
 
 Unique `(company_id, user_id)`. Index `user_id`.
 
-Rows created by affiliation approval, invitation acceptance, company registration, or claim acceptance set `accepted_at` in the same transaction. Invitations live in `team_invitations`; they do not confer membership before acceptance. Company registration creates the initial accepted owner and sets `companies.claimed_at`. Claim acceptance locks the company and refuses any company with `claimed_at` already set or an existing accepted owner.
+Rows created by affiliation approval, invitation acceptance, company registration, or claim acceptance set `accepted_at` in the same transaction. Invitations live in `team_invitations`; they do not confer membership before acceptance. Company registration creates the initial accepted owner and sets `companies.claimed_at`. Claim acceptance takes the shared locks below and refuses any company with `claimed_at` already set or an existing accepted owner.
+
+Access-changing transactions use one lock order: required existing actor/recipient `users`, `companies`, `professionals`, `company_users`, `company_claims`, `claim_tokens`, then `team_invitations`; sort multiple rows within each table by ID and skip unrelated tables. This covers claims, invitation creation/reissue/revocation/acceptance, affiliation decisions, membership changes, and related deletion/restoration. Preliminary lookups discover IDs only. Under the locks, recheck non-deleted users, the actor's current session `auth_version`, verified email, current permissions, parent/profile eligibility, and token state before changing access. The parent company lock also serializes creation when a membership row does not yet exist.
+
+User deletion locks the actor/target users before discovering and locking all companies affected by the target's memberships, profiles, claims, or onboarding tokens. Grants must lock the recipient user first, preventing new grants during cleanup; company deletion serializes grants on its company lock. Never acquire an earlier lock class after a later one; restart if an earlier lock is newly needed. Perform lifecycle cleanup and the state change in the same transaction.
 
 ### 4.5 `professionals`
 
@@ -230,7 +240,7 @@ Affiliation approval and publication are separate decisions: the platform admin 
 
 ### 4.6 Locations
 
-`locations` is a hierarchy: country → region → city.
+`locations` is a hierarchy: country → region → city, with a city also allowed directly under a country (PDF p. 20). Countries have no parent, regions belong to countries, and cities belong to regions or countries. Validate parent types and reject cycles.
 
 | Column | Type | Notes |
 | --- | --- | --- |
@@ -253,11 +263,13 @@ Indexes: partial unique `(parent_id, slug)` where `deleted_at IS NULL AND parent
 | Column | Type | Notes |
 | --- | --- | --- |
 | company_id | bigint FK | |
-| location_id | bigint FK | city or country |
+| location_id | bigint FK | country, region, or city |
 | is_headquarters | boolean | default false |
 | created_at | timestamptz | |
 
-PK or unique `(company_id, location_id)`.
+PK or unique `(company_id, location_id)`. Add a partial unique index on `company_id` where `is_headquarters = true`, allowing at most one HQ pivot per company.
+
+`companies.hq_location_id` must match the sole HQ pivot, or be null with no HQ flags. The locations write transaction locks the company, validates active/non-deleted locations, requires HQ to be one of the selected operating locations, replaces pivots, and synchronizes both representations. Removing HQ requires choosing a new HQ or explicitly clearing it; dashboard and admin writes share this rule.
 
 `professional_markets` — markets the person sells into, not where they sit.
 
@@ -351,7 +363,7 @@ Single table for logos, covers, photos, article images.
 | owner_type | varchar(50) | `company`, `professional`, `article` |
 | owner_id | bigint | |
 | kind | varchar(32) | `logo`, `cover`, `photo`, `image` |
-| disk | varchar(32) | `s3` / `local` |
+| disk | varchar(32) | `public` (local public media) / `s3` |
 | path | varchar(500) | |
 | filename | varchar(255) | |
 | mime_type | varchar(100) | |
@@ -413,7 +425,7 @@ Enforce company/professional consistency with a unique key on `professionals(id,
 
 Index `company_id`, unique `token_hash`.
 
-Store only the token hash; acceptance requires an unexpired, unused, unrevoked token, an approved matching claim request, and authentication as the active bound user with the same verified email. `company_id` and `user_id` must match the linked claim. Lock the non-deleted company, claim, and token and atomically create or promote an accepted owner membership, set `companies.claimed_at`, mark the request `fulfilled`, set `used_at`, and revoke competing unused tokens for that company. An already claimed company, existing accepted owner, wrong account, or invalid token must fail without partial changes. Reissuing a token revokes any prior unused tokens for that request.
+Generate at least 32 cryptographically random bytes before URL-safe encoding and store only the SHA-256 token hash; acceptance requires an unexpired, unused, unrevoked token, an approved matching claim request, and authentication as the active bound user with the same verified email. `company_id` and `user_id` must match the linked claim. Take the applicable user, company, membership, claim, and token locks under §4.4 and atomically create or promote an accepted owner membership, set `companies.claimed_at`, mark the request `fulfilled`, set `used_at`, reject competing pending/approved claims with a lifecycle note, and revoke their unused tokens for that company. An already claimed company, existing accepted owner, wrong account, or invalid token must fail without partial changes. Reissuing a token revokes any prior unused tokens for that request.
 
 ### 4.12 `articles`
 
@@ -460,7 +472,7 @@ Phase 1 may write raw rows. Phase 2 can add a daily aggregate table if volume gr
 
 ### 4.14 `password_reset_tokens` / `sessions`
 
-Use Laravel defaults if the Nuxt app uses cookie sessions through Sanctum SPA mode.
+Use Laravel's standard password-reset token table and database-backed session table. The session cookie carries an opaque session identifier, never an API bearer token. Store the authenticated user's validated `auth_version` and login timestamp in the server session payload; enforce expiry and check the version/current user on every protected request. Account-wide revocation increments the user version and removes existing session rows, so a racing request cannot revive access by persisting an old session afterward. Password reset does not sign the user in; login still requires password and email code.
 
 ### 4.15 `team_invitations`
 
@@ -478,9 +490,9 @@ Use Laravel defaults if the Nuxt app uses cookie sessions through Sanctum SPA mo
 | created_at | timestamptz | |
 | updated_at | timestamptz | |
 
-Index `company_id`, `professional_id`, and `email`; unique `token_hash`. Composite foreign key `(professional_id, company_id)` references `professionals(id, company_id)`. Reissuing an invitation revokes earlier unused invitations for that roster row.
+Index `company_id`, `professional_id`, and `email`; unique `token_hash`. Composite foreign key `(professional_id, company_id)` references `professionals(id, company_id)`. Generate tokens from at least 32 cryptographically random bytes and store only SHA-256 hashes. Reissuing an invitation revokes earlier unused invitations for that roster row.
 
-Acceptance requires an authenticated active user with matching verified email and an unexpired, unrevoked, unused token. In one transaction, lock the invitation and roster row, confirm both the company and professional are non-deleted and the row still has approved affiliation and no linked user, then bind `professionals.user_id`, create an accepted `professional` membership (preserving any existing owner/admin role), and set `accepted_at`. Reject a roster row already owned by another user or a user already linked to another professional; the unique `professionals.user_id` constraint also guards concurrent acceptance. Invitation acceptance grants no company admin/owner rights and does not publish the profile.
+Acceptance requires an authenticated active user with matching verified email and an unexpired, unrevoked, unused token. In one transaction, take the applicable user, company, roster, membership, and invitation locks under §4.4, confirm both the company and professional are non-deleted and the row still has approved affiliation and no linked user, then bind `professionals.user_id`, create an accepted `professional` membership (preserving any existing owner/admin role), and set `accepted_at`. Reject a roster row already owned by another user or a user already linked to another professional; the unique `professionals.user_id` constraint also guards concurrent acceptance. Invitation acceptance grants no company admin/owner rights and does not publish the profile.
 
 ### 4.16 `company_claims`
 
@@ -498,6 +510,34 @@ Acceptance requires an authenticated active user with matching verified email an
 
 Index `(company_id, status)` and `user_id`. Partial unique `(company_id, user_id)` where `status = pending` prevents duplicate pending requests. Admin approval records the reviewer and creates a claim token bound to this request, company, user, and email. It does not create membership or publish/verify a company. Ownership is granted only by the atomic acceptance flow in §4.11; multiple applicants may request a company, but locking and the unclaimed-company check serialize ownership assignment.
 
+Claim creation, review, token reissue, acceptance, and lifecycle cleanup take the applicable user/company and child-row locks under §4.4. Approval/reissue require an active verified-email claimant and a non-deleted, still-unclaimed company without an accepted owner; token issuance requires an approved, unfulfilled request. Company deletion rejects its pending/approved claims; claimant deletion rejects that user's pending/approved claims; acceptance rejects all competing pending/approved claims. Append a lifecycle reason to `review_note`, preserve prior `reviewed_by_user_id` / `reviewed_at` and evidence, update `updated_at`, and revoke the corresponding unused tokens in the same transaction. Automatic rejection is not a new admin review. Fulfilled/rejected history remains unchanged. Restoration or later loss of the final owner requires a new request and review.
+
+### 4.17 `login_challenges`
+
+Short-lived state for password-validated, still-unauthenticated login. This also provides initial mailbox verification; it is separate from company claims, invitations, and public verification badges.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | uuid PK | random public challenge identifier; not an authentication credential |
+| user_id | bigint FK → users | intended active user |
+| email | varchar(255) | current normalized email snapshot |
+| auth_version | bigint | user version validated when the password was checked |
+| session_binding_hash | char(64) | SHA-256 of a random nonce held only in the anonymous server session |
+| code_mac | char(64) | nullable HMAC-SHA-256 over challenge ID and code; key stored outside the database |
+| failed_attempts | smallint | default 0; maximum 5 across all resends |
+| last_sent_at | timestamptz | latest code dispatch; enforce at least 60 seconds before resend |
+| expires_at | timestamptz | ten minutes after creation; resend never extends it |
+| consumed_at | timestamptz | nullable; successful use |
+| revoked_at | timestamptz | nullable; replaced, exhausted, or invalidated |
+| created_at | timestamptz | |
+| updated_at | timestamptz | |
+
+Index `user_id`, `session_binding_hash`, and `expires_at`. Store no raw code or raw binding nonce here. Use cryptographically random six-digit strings, constant-time MAC comparison, and a separate securely configured MAC key. Clear `code_mac` when consumed, revoked, or expired; regularly purge expired challenge rows. Shared atomic account/IP rate limits cap initial sends plus resends at three per account per 15 minutes and constrain new password/challenge attempts as well. The limit survives replacement challenges.
+
+Creation, resend, and verification lock the user before the challenge rows (ordered by ID); replacement revokes the previous challenge for that browser. Before verification or resend, recheck active user, matching email/version/session binding, expiry, attempt budget, and unused/unrevoked state. Resend replaces the MAC but retains the deadline and failed-attempt count. Count wrong codes atomically and revoke at the fifth failure. Only one concurrent successful verification may consume a challenge; mark `email_verified_at` if null in that transaction. Never sign in at the password-only step. The authenticated session receives exactly the validated challenge version, then its ID and CSRF token are regenerated.
+
+Increment the user's version and revoke pending challenges on password reset/change, email change, account deletion/restoration, and platform-role changes; clear `email_verified_at` on email change. Version checks also reject sessions persisted late after revocation. A mail failure cannot complete login. Queue code emails only after commit, protect transient queue payloads, and discard them after delivery/expiry; do not put codes in logs.
+
 ---
 
 ## 5. Soft deletes
@@ -513,16 +553,17 @@ Not soft-deleted:
 
 - company_users and all taxonomy/location pivots: rows removed when an association ends
 - claim_tokens, team_invitations, company_claims: keep lifecycle history; use expiry, revocation, or review state
+- login_challenges: short-lived state; consume/revoke and purge expired rows under §4.17
 - profile_events: append-only measurement rows
 - plans: disable with `is_active`
 
 Public companies/articles require `status = published AND deleted_at IS NULL`; professional queries additionally enforce approved affiliation and a published, non-deleted parent company. Public taxonomies/locations use `is_active = true AND deleted_at IS NULL`. Plans use `is_active = true` and the supported audience filter; they have no `status` or `deleted_at`. The fixed work-model enum has neither publication nor soft-delete state. Apply these same rules to search, detail pages, sitemap generation, and public contact validation.
 
-Lifecycle side effects must be transactional and match `API.md`:
+Lifecycle side effects must be transactional, use the shared locking rules in §4.4, and match `API.md`:
 
 - Deleting a professional revokes unused invitations and removes its professional-only membership, preserving independent owner/admin roles. Restore as draft with pending affiliation, null verification/review fields, and no automatically recreated membership or invitation.
-- Deleting a company hides its team, revokes unused invitations/claim tokens, and removes company memberships. Restore the company as draft with `claimed_at = NULL`; ownership must be reviewed again.
-- Deleting a user invalidates sessions, removes memberships, and revokes that user's unused onboarding tokens. Linked roster profiles retain their historical user association and route new inquiries to the company fallback. Clear `claimed_at` when the last accepted company owner is removed. Restoring an account does not restore revoked relationships or tokens.
+- Deleting a company hides its team, rejects pending/approved claims under §4.16, revokes unused invitations/claim tokens, and removes company memberships. Restore the company as draft with `claimed_at = NULL`; ownership requires a new request and review.
+- Deleting a user increments `auth_version`, invalidates sessions and pending login challenges, removes memberships, rejects that user's pending/approved claims under §4.16, and revokes their unused onboarding tokens. Linked roster profiles retain their historical user association and route new inquiries to the company fallback. Clear `claimed_at` when the last accepted company owner is removed. Restoring an account increments `auth_version` again and requires fresh password/code login; it does not restore revoked relationships, sessions, or tokens. A retained approved/published professional requires accepted membership before the restored user can edit it.
 - Restore operations check the partial unique slug constraints before clearing `deleted_at`; a reused slug requires a new unique slug. Articles restore as draft.
 
 ---
@@ -543,7 +584,7 @@ Threshold for the “Profile complete” badge: score ≥ 80. These weights and 
 
 Phase 1 search can be SQL:
 
-- Filter publicly eligible companies/professionals by pivot IDs and `locations`, using the rules in §5.
+- Filter publicly eligible companies/professionals by pivot IDs and `locations`, using the rules in §5. A geographic filter selects an active, non-deleted location and its active, non-deleted descendants: match company operating locations through `company_locations`, or a professional's primary `location_id`. Served markets remain distinct from physical location. Resolve `country` to its country root; combined country/location selections must agree and are intersected, with invalid or conflicting input rejected as `422` in the API.
 - `ILIKE` / `pg_trgm` on name, tagline, job title.
 - Apply the priority order in PDF p.23: relevance match count, `completeness_score`, verification, requested location/service match, profile quality, then premium placement. Sort each score descending, with `id ASC` as the deterministic final tie-breaker. Verification is a boolean (`verified_at IS NOT NULL`); quality uses `quality_score`. The premium ranking signal is neutral in Phase 1. From Phase 2 it is eligible only when the active assigned company plan allows it, the entitlement has not expired, and `featured_until > now()`. Professionals use the parent company's plan until individual plans are designed in Phase 3. Editorial featured slots may exist in Phase 2 without a premium ranking boost.
 - Location/service match counts requested matches; no requested filter gives a neutral score. No text query gives neutral relevance. These computed scores and completeness/quality defaults must be shared across company and professional search. Premium status must never override a higher-priority match, completeness, verification, or quality tier.

@@ -240,11 +240,15 @@ The banner template uses the matching `banner` and `banner__title` classes. This
 
 ### State
 
-- Session user loaded from `GET /api/me`
+- Session user loaded in the browser from `GET /api/me`; authenticated dashboard/admin routes render client-side
 - Company dashboard selection is explicit in `/api/dashboard/companies/{companyId}/...`; Laravel validates an accepted owner/admin membership for every request
 - An account awaiting onboarding may have no professional profile or company membership; a pending professional may edit their own draft without gaining company permissions
-- Public listings fetched per page (SSR `useAsyncData`)
+- Public listings fetched per page (SSR `useAsyncData` calling the typed API client)
+- The browser API base is same-origin `/api`; SSR uses an absolute Laravel API base from server-only runtime configuration. Relative server-side `$fetch('/api/...')` targets Nuxt internally and does not pass through the external reverse proxy
+- Public SSR requests are anonymous and do not forward user cookies. Load session-specific UI and protected data in the browser; authenticated SSR would need a separate cookie-forwarding design
 - No local copy of the full directory
+
+The server/browser request distinction follows [Nuxt's `$fetch` behavior](https://nuxt.com/docs/4.x/api/utils/dollarfetch).
 
 ### SEO
 
@@ -278,7 +282,7 @@ Search uses one shared ranking policy: relevance, completeness, verification, lo
 
 ### Suggested Laravel areas (logical, not generated)
 
-- `Auth` — register, login, logout, password reset, `/api/me`
+- `Auth` — register, password/code login, resend, logout, password reset, `/api/me`
 - `Taxonomy` — services, industries, locations, etc.
 - `Companies` — public show/index + dashboard write
 - `Professionals` — same
@@ -292,35 +296,59 @@ Search uses one shared ranking policy: relevance, completeness, verification, lo
 
 ## 5. Auth flow
 
-First-party SPA:
+### Session cookies and CSRF
 
-1. Nuxt calls `GET /sanctum/csrf-cookie`
-2. `POST /api/login` with email/password
-3. Subsequent requests send session cookie + `X-XSRF-TOKEN`
-4. `GET /api/me` returns user, platform_role, accepted company memberships, and a professional profile (or null) with affiliation state
-5. `POST /api/logout` destroys the session
+Use Sanctum's server-side SPA sessions. The session cookie is `HttpOnly`, `Secure` in production, `SameSite=Lax`, and `Path=/`; prefer a host-only cookie for the same-origin deployment. JavaScript must not read the session identifier. Do not issue browser bearer tokens or put authentication credentials in localStorage/sessionStorage. Disable persistent remember-me login in Phase 1.
 
-Registration:
+`XSRF-TOKEN` is a separate, deliberately JavaScript-readable cookie. The fetch wrapper URL-decodes it and sends `X-XSRF-TOKEN` on every `POST`, `PUT`, `PATCH`, and `DELETE`, including anonymous registration, inquiries, and events. Send credentials and `Accept: application/json`; preserve Origin/Referer through the proxy. HttpOnly does not replace CSRF protection.
+
+Enable Laravel's `statefulApi` middleware and configure first-party hosts as described in [Sanctum SPA authentication](https://laravel.com/framework/docs/13.x/sanctum#spa-authentication). Production requires HTTPS and correct trusted-proxy configuration so Laravel issues secure cookies. Use the [environment rules](#8-environments) for optional sibling subdomains.
+
+### Password and email-code login
+
+The Phase 1 implementation default is an emailed code after the password for every fresh company, professional, onboarding-account, and platform-admin login. This adapts Musticker's verification-screen pattern to Sanctum sessions; it does not adopt its token-cookie implementation or trusted-device bypass.
+
+1. The browser calls `GET /sanctum/csrf-cookie` with credentials enabled. This initializes a CSRF-protected anonymous session, not an authenticated account.
+2. `POST /api/login` checks email/password without signing the user into the guard. Valid credentials create a short-lived `login_challenges` record bound to the active user, current email, `auth_version`, and anonymous browser session. Email a code and return `202` with the challenge details; `/api/me` and other protected endpoints still return `401`.
+3. `POST /api/login/verify` submits the challenge ID and code using the same session and CSRF header. Lock the user then challenge; recheck the session binding, account state, current email/version, expiry, attempt budget, and unused/unrevoked state. Consume a matching code atomically; only one concurrent verification may succeed.
+4. A successful code check sets `email_verified_at` if absent, signs the user into the session, regenerates the session ID and CSRF token, and records the challenge's validated `auth_version` in the session. Never replace that version with a newer one after a concurrent reset. Return `200`; Nuxt reads the fresh CSRF cookie before the next write and loads `GET /api/me`.
+5. `POST /api/logout` logs out, invalidates the server session, regenerates CSRF, and clears the authentication cookie using the same path/domain attributes. Expired sessions require password and code again. Handle `401` and `419` without losing non-secret form input or blindly replaying writes; clear passwords and codes from frontend state after use.
+
+Code defaults: six cryptographically random digits, a ten-minute challenge lifetime, and at most five failed code attempts per challenge. Resend requires the same pending session, waits at least 60 seconds, and replaces the previous code without extending the original deadline or resetting failed attempts. Allow at most three sends, including the initial send, per account per 15 minutes. Apply additional account/IP limits to login, verification, resend, registration, and password reset in a shared rate-limit store; new challenges and parallel requests must not bypass those limits. These are configurable launch defaults, not figures prescribed by the PDF.
+
+Store only a keyed MAC of the code, never a plaintext code or an unkeyed hash of its small numeric space; keep the MAC key outside the database and use constant-time comparison. Store only a hash of the random session-binding nonce. Redact passwords, codes, reset/claim/invitation tokens, session cookies, and CSRF headers from application/proxy logs and analytics. Deliver mail after commit, protect any queued code payload, and discard it after delivery or expiry. A delivery failure leaves the user unauthenticated with a retry/resend path.
+
+Starting a replacement challenge in the same browser invalidates its earlier challenge. Password reset/change, email change, account deletion/restoration, and platform-role changes increment `users.auth_version` and revoke pending challenges and existing sessions. Clear `email_verified_at` when the email changes; password reset never signs the user in automatically. Every protected request checks a non-deleted user, verified email, and the session's version against the current user row; sensitive access-changing transactions repeat that check under the user lock. A session written late after revocation remains unusable because its version is stale.
+
+An email code confirms mailbox access; it is not phishing-resistant MFA or company identity verification. Stronger admin authentication, such as passkeys, can be added separately. See the [OWASP authentication-factor guidance](https://cheatsheetseries.owasp.org/cheatsheets/Multifactor_Authentication_Cheat_Sheet.html) and [session guidance](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html).
+
+### Registration and authorization
+
+All registration routes create an unverified user and return `201` with `next_action = login`, without authenticating the session. The first successful password-plus-code login verifies the current email. There is no separate signed-link email-verification flow in Phase 1.
 
 - `POST /api/register` creates an account only for company/sales users entering a claim or invitation flow. It creates neither a company nor a professional and does not introduce buyer accounts.
-- `POST /api/register/company` creates user + draft company + accepted `company_users.owner`. The new listing is claimed, but neither verified nor published automatically.
+- `POST /api/register/company` creates user + draft company + accepted `company_users.owner`. The new listing is claimed, but neither verified nor published automatically; the owner cannot use protected routes until login completes.
 - `POST /api/register/professional` requires `company_id` and `job_title`; it creates user + draft professional with `affiliation_status = pending`. The company FK is always present. No company membership is granted yet.
 - An email-verified company owner/admin or platform admin reviews affiliation. Approval of a self-registered professional requires their verified email, records `affiliation_reviewed_by` / `affiliation_reviewed_at`, and creates an accepted professional membership. Only platform admins publish the profile, and only after affiliation is approved. Rejection leaves a private draft with no company access.
-- Platform admins are created by an existing admin, not public register
+- Platform admins are created by an existing admin, not public registration; the same password/code login applies.
 
-Authorization lives in Laravel policies. Nuxt hides buttons; the API still rejects forbidden writes.
+Authorization lives in Laravel policies. Nuxt hides buttons; the API still rejects forbidden writes. Approved professional editing requires accepted company membership. The membership-free exception covers only the linked user's non-deleted private draft with pending/rejected affiliation in a non-deleted company; independent owner/admin permissions use company-scoped routes. A retained user/profile link after restoration never restores access to an approved or published profile.
 
-Team invitations:
+Claims, invitations, affiliation decisions, membership changes, and deletion/restoration share the [locking and eligibility-recheck rules](DATABASE.md#44-company_users), so concurrent requests cannot recreate access after cleanup.
+
+### Team invitations
 
 1. An accepted company owner/admin creates an approved roster profile and a `team_invitations` row bound to that profile, company, and intended email. A roster profile may have `user_id = null`.
-2. The recipient signs in or creates an account without generating another professional, then verifies the intended email.
-3. Acceptance validates the hashed, unexpired, unused, unrevoked token and the matching non-deleted company/profile and verified email. In one transaction, it attaches the user, creates the accepted membership, and consumes the invitation. A token cannot take over an already owned profile or create a second professional for the same user.
+2. The recipient signs in, or creates an account without generating another professional and completes password/code login for the intended email.
+3. Acceptance validates the hashed, unexpired, unused, unrevoked token and the matching non-deleted company/profile and verified email. In one transaction, lock the applicable user, company, roster, membership, and invitation rows in the shared order, recheck eligibility, attach the user, create the accepted membership, and consume the invitation. A token cannot take over an already owned profile or create a second professional for the same user.
 
-Company claims:
+### Company claims
 
 1. An authenticated user with verified email requests an unclaimed company, creating a pending `company_claims` record. A request grants no editing rights.
 2. A platform admin reviews authority to represent the company. Approval issues an emailed token in `claim_tokens`, linked by `company_claim_id` and bound to the intended user/email; rejection grants nothing.
-3. Acceptance requires the approved claim, the intended active authenticated user with matching verified email, and an unexpired, unused, unrevoked token. Laravel locks the company and claim/token records, confirms the company is non-deleted and still unclaimed with no accepted owner, creates or promotes the accepted owner membership, sets `claimed_at`, marks the claim fulfilled, consumes the token, and revokes competing unused tokens atomically.
+3. Acceptance requires the approved claim, the intended active authenticated user with matching verified email, and an unexpired, unused, unrevoked token. Laravel takes the shared user/company/membership/claim/token locks, confirms the company is non-deleted and still unclaimed with no accepted owner, creates or promotes the accepted owner membership, sets `claimed_at`, marks the claim fulfilled, consumes the token, rejects competing pending/approved claims with a lifecycle note, and revokes their unused tokens atomically. Company/claimant deletion also closes outstanding claims; restoration requires a fresh request and review, as specified in [DATABASE.md](DATABASE.md#5-soft-deletes).
+
+Claim and invitation tokens contain at least 32 cryptographically random bytes before URL-safe encoding; store only SHA-256 hashes. Treat emailed links as secrets: use HTTPS, avoid third-party scripts/analytics on acceptance pages, and apply `Referrer-Policy: no-referrer`. Opening a link never grants access; acceptance is a CSRF-protected POST from the intended verified account.
 
 These are Phase 1 workflows. Affiliation approval, ownership claims, email verification, and public company/professional verification are distinct checks; none automatically grants another badge or publication status.
 
@@ -356,7 +384,11 @@ The server creates one `inquiry` event per accepted provider inquiry, linked by 
 
 ## 7. Media
 
-Phase 1: Laravel stores files on local or S3 disk, records `media` rows, and returns public URLs and `alt_text` through the API. Nuxt never writes to storage directly. Images: company logo/cover and professional photo; article images accompany Phase 2 content. Validate file type/size and use descriptive alternatives for meaningful images; decorative images get empty alternatives. Captions are required if video is introduced later.
+Phase 1: Laravel stores public profile images on its `public` disk (local files) or a configured S3 disk, records `media` rows, and returns public URLs and `alt_text` through the API. For local public files, expose Laravel's `public/storage` link at `/storage/**`; the default private `local` disk is not a public media URL source. See [Laravel's public disk](https://laravel.com/framework/docs/13.x/filesystem#the-public-disk). Nuxt never writes to storage directly. Images: company logo/cover and professional photo; article images accompany Phase 2 content. Validate file type/size and use descriptive alternatives for meaningful images; decorative images get empty alternatives. Captions are required if video is introduced later.
+
+For Phase 1 uploads, allow JPEG, PNG, and WebP only. Validate decoded content, byte size, and pixel dimensions; re-encode accepted images, strip metadata, and generate server-owned filenames. Reject SVG/HTML and executable content, keep unprocessed originals private, and disable script execution in public media storage. These are implementation defaults following [OWASP upload guidance](https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html).
+
+Render user content as escaped text. Any supported rich text must pass a maintained server-side allowlist sanitizer before rendering; never send untrusted HTML directly to `v-html`. Validate website/social URLs against allowed `http`/`https` schemes and reject executable schemes, following [Vue's security guidance](https://vuejs.org/guide/best-practices/security.html).
 
 ---
 
@@ -365,12 +397,16 @@ Phase 1: Laravel stores files on local or S3 disk, records `media` rows, and ret
 | Concern | Phase 1 intent |
 | --- | --- |
 | Nuxt origin | e.g. `https://bpoprofile.com` |
-| API origin | same domain `/api` via reverse proxy, or `https://api.bpoprofile.com` |
-| Sanctum stateful domains | the Nuxt origin |
+| Browser API base | same-origin `/api` via reverse proxy; optional `https://api.bpoprofile.com/api` |
+| SSR API base | absolute Laravel API URL in server-only runtime configuration |
+| Sanctum stateful domains | frontend `host[:port]`, without a scheme; include development ports |
+| Public media | `/storage/**` served from Laravel's public disk, or object-storage URLs |
 | Mail | transactional provider |
 | Search | PostgreSQL |
 
-Preferred later topology: one public domain, reverse proxy `/` → Nuxt and `/api` + `/sanctum` → Laravel. Simpler cookies, simpler CORS.
+Preferred deployment: one public domain; route `/api/**` and `/sanctum/**` to Laravel, serve `/storage/**` from Laravel's public disk when using local media, and send other paths to Nuxt. The SSR API base must resolve to Laravel from the Nuxt server.
+
+If using sibling subdomains, configure credentialed browser fetch, CORS with the exact frontend origin and credentials allowed, and a shared cookie domain such as `.bpoprofile.com`. Apply CORS to the API and CSRF-cookie routes. The SPA and API must share the same parent domain for this Sanctum design.
 
 ---
 

@@ -20,15 +20,52 @@ This contract implements [BPO Profile.pdf](BPO%20Profile.pdf); framework, route 
 | POST | `/api/register` | no | Create account for an existing-company claim or team invitation |
 | POST | `/api/register/company` | no | Create user + company |
 | POST | `/api/register/professional` | no | Create user + pending professional affiliation |
-| POST | `/api/login` | no | Start session |
+| POST | `/api/login` | no | Validate password and send login code; session remains anonymous |
+| POST | `/api/login/verify` | pending challenge | Verify code and complete authenticated session |
+| POST | `/api/login/resend` | pending challenge | Replace code for the same pending session |
 | POST | `/api/logout` | yes | End session |
 | GET | `/api/me` | yes | Current user + memberships |
 | POST | `/api/forgot-password` | no | Send reset link |
 | POST | `/api/reset-password` | no | Set new password |
-| POST | `/api/email/verification-notification` | yes | Send or resend verification link |
-| GET | `/api/email/verify/{id}/{hash}` | yes + signed URL | Verify the signed-in user's email |
+
+Every authenticated endpoint requires a completed password/code login, a non-deleted email-verified user, and a current session `auth_version`. “Pending challenge” permits only verification/resend in its bound anonymous session, never dashboard access.
+
+All first-party browser writes follow the [Sanctum auth flow](ARCHITECTURE.md#5-auth-flow), including public forms and events: initialize CSRF, send credentials and the URL-decoded cookie as `X-XSRF-TOKEN`, and request JSON responses. “No auth” means no account required; it does not disable CSRF protection.
 
 `POST /api/register` takes `first_name`, `last_name`, `email`, `password`, and `password_confirmation`. It creates no company, professional, or membership; the verified user completes a claim or invitation flow below. This is provider onboarding, not a buyer-account feature. Registration, login, verification, and reset endpoints are rate limited.
+
+### Password and email-code login
+
+All provider and platform-admin accounts use this flow on every fresh sign-in. Registration returns `201` with `{ "next_action": "login" }`, leaves `email_verified_at = null`, and creates no authenticated session. The first successful code check verifies the current email. There are no separate `/api/email/verify/...` or verification-notification endpoints in this contract.
+
+`POST /api/login` takes `email` and `password`. Valid credentials start a pending challenge and return `202`:
+
+```json
+{
+  "status": "email_code_required",
+  "challenge_id": "f8d4c2a7-073b-4e0a-a219-7cd01340ec4e",
+  "masked_email": "a***@example.com",
+  "expires_in": 600,
+  "resend_after": 60
+}
+```
+
+The session remains anonymous: `/api/me`, dashboards, claims, and admin routes return `401` until the code succeeds. Invalid credentials or an unavailable account return the same generic `401`, without a challenge or account-status details. Starting a replacement challenge revokes the earlier challenge in that browser.
+
+`POST /api/login/verify` takes:
+
+```json
+{
+  "challenge_id": "f8d4c2a7-073b-4e0a-a219-7cd01340ec4e",
+  "code": "012345"
+}
+```
+
+Keep the code as a six-character string, including leading zeros. Verify only with the original anonymous session and valid CSRF header; the challenge ID alone grants no authority. On success, atomically consume the challenge, verify the account email if needed, regenerate the session ID/CSRF token, and return `200` with `{ "status": "authenticated" }`. Authentication is carried by the HttpOnly session cookie, with no bearer token in JSON. Read the updated CSRF cookie before another write, then fetch `/api/me`. Replays, superseded codes, expired/revoked challenges, or a wrong session return a generic `422`; account/IP throttling returns `429` with `Retry-After`. Protected endpoints also reject stale `auth_version` sessions.
+
+`POST /api/login/resend` takes only `challenge_id`, requires its pending session and CSRF header, and returns `202` with the same challenge shape and remaining `expires_in`. It does not accept a replacement email address or extend the original ten-minute deadline. Wait 60 seconds between sends; allow at most three sends including the initial one per account per 15 minutes. Resending invalidates the previous code but preserves the five-failed-attempt budget. At the fifth failure revoke the challenge; restarting requires the password and remains subject to aggregate account/IP limits. Concurrent verification/resend requests must share the same locked state.
+
+Cookie attributes, keyed code storage, delivery failures, and session invalidation follow the [architecture auth flow](ARCHITECTURE.md#5-auth-flow) and [login challenge schema](DATABASE.md#417-login_challenges). Forgotten-password responses are generic regardless of account existence. A successful password reset revokes old sessions/challenges and requires a fresh password/code login; it never authenticates the reset request.
 
 ### `POST /api/register/company`
 
@@ -59,7 +96,7 @@ Company registration creates a draft company, sets `claimed_at`, and creates an 
 }
 ```
 
-`company_id` and `job_title` are required. The company must exist and be available for registration. Create the user and a draft professional with `affiliation_status = pending` in one transaction; do not create a `company_users` membership yet. The user may edit their own draft, but has no company-management or company-inbox access. An accepted company owner/admin or platform admin reviews affiliation. Approval creates an accepted `professional` membership (preserving any existing owner/admin role); publication still requires platform-admin review. Reject attempts to create a second professional for the same user.
+`company_id` and `job_title` are required. The company must exist and be available for registration. Create the user and a draft professional with `affiliation_status = pending` in one transaction; do not create a `company_users` membership yet. After completing password/code login, the user may edit their own private draft, but has no company-management or company-inbox access. An accepted company owner/admin or platform admin reviews affiliation. Approval creates an accepted `professional` membership (preserving any existing owner/admin role); publication still requires platform-admin review. Reject attempts to create a second professional for the same user.
 
 ### `GET /api/me` (shape)
 
@@ -69,6 +106,7 @@ Company registration creates a draft company, sets `claimed_at`, and creates an 
   "first_name": "Ana",
   "last_name": "Reyes",
   "email": "ana@example.com",
+  "email_verified_at": "2026-09-25T08:00:00Z",
   "platform_role": "user",
   "companies": [
     { "id": 10, "name": "Northshore CX", "slug": "northshore-cx", "role": "owner" }
@@ -124,7 +162,7 @@ Taxonomy item:
 | GET | `/api/locations/{countrySlug}` | Phase 2: country landing |
 | GET | `/api/locations/{countrySlug}/{placeSlug}` | Phase 2: region or direct-child city landing |
 | GET | `/api/locations/{countrySlug}/{regionSlug}/{citySlug}` | Phase 2: city within a region |
-| GET | `/api/home` | Launch search/catalog/how-it-works content; featured blocks added in Phase 2 |
+| GET | `/api/home` | Launch search/catalog/value-proposition/how-it-works/CTA content; featured and resource blocks added in Phase 2 |
 | GET | `/api/articles` | Phase 2: resource index |
 | GET | `/api/articles/{slug}` | Phase 2: article |
 | GET | `/api/landings/{slug}` | Phase 2: approved service/location or industry/service landing |
@@ -152,7 +190,9 @@ Phase 2 combination landings use curated editorial content plus approved filters
 | sort | `relevance` (default), `newest`, `name` |
 | page | paginator |
 
-Same filters on `/api/professionals` where they apply (`q`, service, industry, location, language).
+Professional search supports `q`, `service`, `industry`, `location`, `country`, `language`, `sort`, and `page`.
+
+Geographic filters match the selected active, non-deleted location and its active, non-deleted descendants. Companies match any operating `company_locations` row in that subtree, not just HQ. Professionals match their primary `location_id`; `professional_markets` describes served markets and does not imply physical presence. A `country` slug resolves to a country root. When both `country` and `location` are given, intersect them and require the location to belong to that country; invalid, inactive, deleted, or conflicting selections return `422`. Thus a country or region search includes companies/professionals recorded at a city below it.
 
 For `sort=relevance`, apply the brief's priorities in order: relevance, profile completeness, verification, location/service match, quality, then eligible premium visibility (PDF page 23). Use `id ASC` only to break remaining ties. The shared scoring and placement-eligibility rules are in `DATABASE.md`; premium placement cannot skip an earlier priority. `newest` and `name` are explicit alternative sorts, never a bypass of visibility or filtering rules.
 
@@ -178,7 +218,7 @@ For `sort=relevance`, apply the brief's priorities in order: relevance, profile 
 
 ### Company profile (show)
 
-Extends the card with `overview`, `why_choose_us`, `founded_year`, `company_size`, `work_model`, `locations`, `capabilities`, `technologies`, `languages`, `certifications`, `website_url`, `linkedin_url`, `other_social_json`, `phone`, `cover_url`, `cover_alt_text`, `seo_title`, `seo_description`, and eligible `professionals[]` cards. Return available inquiry actions (`contact`, `question`, `quote`) without exposing the internal `inquiry_email` or assignment data.
+Extends the card with `overview`, `why_choose_us`, `founded_year`, `company_size`, `work_model`, `locations`, `capabilities`, `technologies`, `languages`, `certifications`, `website_url`, `linkedin_url`, `other_social_json`, `phone`, `cover_url`, `cover_alt_text`, `seo_title`, `seo_description`, and eligible `professionals[]` cards. Company-supplied client proof/testimonials can be included in `overview` as attributed company content; they are not platform-verified buyer reviews. Return available inquiry actions (`contact`, `question`, `quote`) without exposing the internal `inquiry_email` or assignment data.
 
 ### Professional card
 
@@ -318,9 +358,15 @@ All require auth and accepted `owner` or `admin` membership in `{companyId}`; pl
 }
 ```
 
-Company users may request `draft` or `pending_review`; they cannot override a platform-admin suspension. Only platform admins set `published` / `suspended`, verification, featured status, or plan assignment. Updates cannot change ownership or bypass moderation. Uploads validate media type/size and accept `alt_text`; taxonomy/location IDs must be active and valid.
+Company users may request `draft` or `pending_review`; they cannot override a platform-admin suspension. Only platform admins set `published` / `suspended`, verification, featured status, or plan assignment. Updates cannot change ownership or bypass moderation. All image-upload endpoints accept validated JPEG/PNG/WebP with `alt_text`; enforce content, byte-size, and dimension checks plus the [media processing rules](ARCHITECTURE.md#7-media). Taxonomy/location IDs must be active and valid.
+
+### Company locations and headquarters
+
+`PUT /api/dashboard/companies/{companyId}/locations` accepts `location_ids` and nullable `hq_location_id`. All selected locations must be active and non-deleted; HQ, when set, must be in `location_ids`. In one transaction, lock the company, replace its operating-location pivots, set `companies.hq_location_id`, and flag exactly that pivot as `is_headquarters`. A null HQ clears all HQ flags. Removing the existing HQ requires a replacement or explicit null. Reject inconsistent input with `422`; general profile writes cannot update HQ separately. Admin location changes follow the same rule.
 
 ### Team affiliation and invitations
+
+All access-changing operations and related deletion/restoration follow the [shared transaction and locking rules](DATABASE.md#44-company_users). Recheck user/session state and actor permissions inside the transaction, not only in request middleware.
 
 Creating a roster professional requires `first_name`, `last_name`, and `job_title`. The route supplies `company_id`; `user_id` remains `null`, affiliation is company-approved, and publication status starts as `draft`. Company staff may manage this roster profile before it has a login.
 
@@ -328,7 +374,7 @@ Affiliation review accepts `{ "decision": "approved" }` or `{ "decision": "rejec
 
 An invitation takes `{ "email": "luis@example.com" }` for an unlinked roster row and creates `team_invitations` with a hashed, expiring, single-use token emailed to that address. A new invitation revokes any prior unused invitation for the same roster row. It does not create an accepted membership or grant dashboard access.
 
-`POST /api/team-invitations/accept` requires an active authenticated user with verified email and `{ "token": "..." }`. In one transaction, validate the unused/unrevoked token, expiry, intended email, non-deleted company, and non-deleted unlinked roster row with approved affiliation; attach `user_id`, create an accepted `professional` membership (preserving owner/admin), and mark the invitation accepted. Reject conflicting existing user/profile links or duplicate ownership of the roster; do not silently merge or transfer profiles. Approved affiliation remains approved. Acceptance does not change platform publication or verification status.
+`POST /api/team-invitations/accept` requires an active authenticated user with verified email and `{ "token": "..." }`. In one transaction, take the applicable user, company, roster, membership, and invitation locks in the shared order, then validate the unused/unrevoked token, expiry, intended email, non-deleted company, and non-deleted unlinked roster row with approved affiliation; attach `user_id`, create an accepted `professional` membership (preserving owner/admin), and mark the invitation accepted. Reject conflicting existing user/profile links or duplicate ownership of the roster; do not silently merge or transfer profiles. Approved affiliation remains approved. Acceptance does not change platform publication or verification status.
 
 Removing a team professional revokes pending invitations. Remove a `professional`-only membership that exists for that profile; preserve an independent owner/admin membership. Soft deletion prevents public discovery and new personal inquiries. Restoring a professional resets publication to draft, affiliation to pending, and verification/review fields to null; it restores neither professional membership nor invitations. Approval and publication must run again.
 
@@ -342,7 +388,7 @@ For the same target scope and date window, `lead_conversion_rate = accepted non-
 
 ## 6. Sales dashboard
 
-These routes address only the authenticated user's linked professional. Company owners/admins editing somebody else's profile use the company-scoped team routes above. A pending applicant may edit their own draft; inbox and stats require approved affiliation and accepted membership. Never infer another professional from the user's first company membership.
+These routes address only the authenticated user's linked, non-deleted professional in a non-deleted company. Approved affiliations require accepted membership for profile editing. Inbox and stats require both approved affiliation and accepted membership. Membership-free editing is limited to the linked user's private `draft` with `pending` or `rejected` affiliation. A retained user/profile link after restoration grants no access to an approved or published profile. Company owners/admins use company-scoped team routes under their independent accepted role. Never infer another professional from the user's first company membership.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -354,7 +400,7 @@ These routes address only the authenticated user's linked professional. Company 
 | PATCH | `/api/dashboard/professional/inquiries/{id}` | Mark own assigned inquiry read / replied / archived / spam |
 | GET | `/api/dashboard/professional/stats` | Own stats |
 
-Profile update payloads cannot change `company_id`, `user_id`, affiliation approval, verification, featured status, or plan assignment. Submission for publication requires approved affiliation and verified email; only platform admins publish or suspend. Own inbox queries additionally require `assigned_user_id` to match the signed-in user.
+Profile update payloads cannot change `company_id`, `user_id`, affiliation approval, verification, featured status, or plan assignment. Submission for publication requires approved affiliation, accepted company membership, and verified email; only platform admins publish or suspend. Own inbox queries additionally require `assigned_user_id` to match the signed-in user.
 
 ---
 
@@ -377,9 +423,9 @@ The public claim page may explain the process and guide visitors through login o
 
 `POST /api/claims` validates an eligible, non-deleted, unclaimed company and stores a `company_claims` row with `company_id`, the requesting `user_id`, and `status = pending`. The current verified email comes from that user and is bound into the token when approved; the claim table does not duplicate email. Return `201` with the request's ID and status. A duplicate pending request for the same user/company returns `422`. A request alone neither creates ownership nor sends an ownership token.
 
-An admin reviews the request through `PATCH /api/admin/claims/{id}` with `decision = approved` or `rejected` and an internal `review_note`. Approval records `reviewed_by_user_id` / `reviewed_at` and issues an expiring, hashed `claim_tokens` entry linked by `company_claim_id` to the request, intended user, and verified email. Email the raw token after commit; never expose token hashes in API responses. Rejection records the reason and issues no token. Reissuing an approved claim's token revokes the previous unused token first.
+An admin reviews the request through `PATCH /api/admin/claims/{id}` with `decision = approved` or `rejected` and an internal `review_note`. Approval records `reviewed_by_user_id` / `reviewed_at` and issues an expiring, hashed `claim_tokens` entry linked by `company_claim_id` to the request, intended user, and verified email. Email the raw token after commit; never expose token hashes in API responses. Rejection records the reason and issues no token. Reissuing an approved claim's token revokes the previous unused token first. Approval and token reissue recheck an active verified-email claimant and a non-deleted, still-unclaimed company without an accepted owner. Rejected or fulfilled requests cannot receive new tokens. Claim creation, review, reissue, acceptance, and lifecycle cleanup take the applicable user/company and child-row locks under the [shared locking rules](DATABASE.md#44-company_users).
 
-Acceptance atomically locks and checks the company, approved request, and token: intended user and verified email must match; the token must be unused, unrevoked, and unexpired; the company must be non-deleted, still unclaimed, and without an accepted owner. Create or promote an accepted `owner` membership, set `claimed_at`, set the token's `used_at`, and mark the claim `fulfilled`. Revoke competing unused claim tokens so concurrent requests cannot grant a second initial owner. Claim acceptance changes neither publication nor platform verification. Invalid, expired, revoked, or reused tokens and companies claimed in the meantime return `422` without granting partial access.
+Acceptance atomically takes the applicable user, company, membership, claim, and token locks in the shared order and rechecks eligibility: intended user and verified email must match; the token must be unused, unrevoked, and unexpired; the company must be non-deleted, still unclaimed, and without an accepted owner. Create or promote an accepted `owner` membership, set `claimed_at`, set the token's `used_at`, and mark the claim `fulfilled`. Reject competing pending/approved claims with an internal lifecycle note and revoke their unused tokens in the same transaction, preserving prior review evidence. Concurrent requests cannot grant a second initial owner or reuse a superseded approval after ownership later ends. Claim acceptance changes neither publication nor platform verification. Invalid, expired, revoked, or reused tokens and companies claimed in the meantime return `422` without granting partial access.
 
 ---
 
@@ -417,7 +463,7 @@ Prefix `/api/admin`. Requires an authenticated, email-verified user with `platfo
 
 `verified` is the admin request boolean; the server sets or clears `verified_at` after identity review. Affiliation approval alone never sets that badge. `featured_until` is a Phase 2 field; company-plan assignment is manual in Phase 1 and must use an active company-audience plan. Platform admins granting ownership use the reviewed claim workflow above. Creation endpoints must honor the required database fields and defaults; admin-created companies remain unclaimed until ownership is accepted.
 
-Deleting a company hides its professionals, revokes unused invitations/claim tokens, and removes company memberships. Restoring it does not restore permissions or published status; reset `claimed_at` so ownership can be reviewed again. Deleting a user revokes their sessions, removes memberships, and revokes their unused onboarding tokens; any linked public roster routes new inquiries to the company fallback. If the last accepted owner is removed, clear `claimed_at`. Never silently recreate deleted relationships on restore.
+Deleting a company hides its professionals, removes company memberships, rejects its pending/approved claims with a lifecycle note, and revokes unused invitations/claim tokens. Restoring it does not restore permissions or published status; reset `claimed_at` and require a new claim and ownership review. Deleting a user revokes their sessions, removes memberships, rejects that user's pending/approved claims, and revokes their unused onboarding tokens; any linked public roster routes new inquiries to the company fallback. Preserve prior claim-review evidence during lifecycle rejection as specified in [DATABASE.md](DATABASE.md#416-company_claims). If the last accepted owner is removed, clear `claimed_at`; a later claimant needs a new request and review. Never silently recreate deleted relationships or reactivate old claims on restore.
 
 Admin company patch example:
 
@@ -438,7 +484,7 @@ Admin company patch example:
 | Read published profiles | anyone |
 | Submit inquiry | anyone (rate limited) |
 | Edit company | accepted company owner/admin; platform admin |
-| Edit sales profile | linked professional for own permitted fields; accepted company owner/admin via company-scoped route; platform admin |
+| Edit sales profile | linked user under the membership/private-draft rules in §6; accepted company owner/admin via company-scoped route; platform admin |
 | Approve professional affiliation | verified company owner/admin or platform admin |
 | Request / accept company claim | verified authenticated claimant; acceptance also requires admin approval and intended token |
 | Publish / verify / feature / change plan | platform admin |
@@ -451,9 +497,11 @@ Admin company patch example:
 | Code | When |
 | --- | --- |
 | 200 / 201 | OK / created |
-| 401 | Missing session |
+| 202 | Login code challenge created or resent; not authenticated |
+| 401 | Missing/expired/revoked authenticated session, pending login challenge, or invalid login credentials |
 | 403 | Authenticated but not allowed |
 | 404 | Unknown or publicly ineligible profile/landing; foreign nested dashboard resource |
+| 419 | CSRF/session token expired or mismatched; preserve form input while refreshing auth/CSRF state |
 | 422 | Validation |
 | 429 | Public submission, event, auth, or token-flow rate limit |
 
