@@ -1,75 +1,78 @@
-# Nuxt Minimal Starter
+# BPO Profile — frontend
 
-Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+Nuxt 4 + Vue 3 + TypeScript + SCSS + Pinia. The UI is **static**: every screen renders from
+Pinia stores that answer from typed seed data shaped exactly like the Laravel API payloads in
+`docs/API.md`. No requests are made yet.
 
-## Setup
+Planning documents live in `docs/` (product plan, architecture, API, database, setup).
 
-Make sure to install dependencies:
+## Run
 
 ```bash
-# npm
 npm install
-
-# pnpm
-pnpm install
-
-# yarn
-yarn install
-
-# bun
-bun install
+npm run dev      # http://localhost:3000
+npm run build    # production build (also rebuilds the icon sprite)
 ```
 
-## Development Server
+`predev` / `prebuild` run `app/icons/build-icons.js`, which turns the SVGs in
+`app/icons/src/` into `public/icons/sprite.svg` and the typed icon list in
+`app/data/ui/icons.ts`. Add an SVG there to get a new `MIcon` name.
 
-Start the development server on `http://localhost:3000`:
+## Structure
 
-```bash
-# npm
-npm run dev
-
-# pnpm
-pnpm dev
-
-# yarn
-yarn dev
-
-# bun
-bun run dev
+```text
+app/
+  assets/scss/          base/ partials (tokens, reset, type, layout) + _component.scss (every m-* style)
+  components/
+    base/               M* primitives — auto-imported (MButton, MInput, MModal, MTable…)
+    core/               composed UI shared across features (cards, search, inquiry form, inbox, stats…)
+    layout/             Header, Footer, Logo, panel/ Sidebar + Topbar
+    features/<page>/    page sections; each Index.vue composes its sections
+  composables/          useModal, useCanonical, features/directory/useDirectoryQuery
+  stores/               Pinia data layer: app/session + features/{catalog,directory,dashboard,admin,onboarding}
+  data/features/        seed records the stores answer from, plus static page copy (site, home, about, legal, pricing)
+  layouts/              default · auth · dashboard · admin
+  pages/                route files: pick the feature, set meta, load data, pass props
+  types/                api/ · app/ · base/ · features/
+  utils/                labels (enum → text/tone/icon) and formatters
 ```
 
-## Production
+Browse `/styleguide` (noindex) for every base and core component with its variants.
 
-Build the application for production:
+## Routes
 
-```bash
-# npm
-npm run build
+| Area | Routes |
+| --- | --- |
+| Public | `/` `/find` `/companies` `/companies/[slug]` `/professionals` `/professionals/[slug]` `/services` `/industries` `/locations` `/pricing` `/contact` `/about` `/terms` `/privacy` |
+| Onboarding | `/claim` `/claim/[token]` `/invitations/[token]` |
+| Auth | `/login` `/login/verify` `/register` `/forgot-password` `/reset-password` `/onboarding` |
+| Company + sales dashboard | `/dashboard` `/dashboard/profile` `/dashboard/inquiries` `/dashboard/stats` `/dashboard/account` `/dashboard/companies/[companyId]` (+ `/services` `/locations` `/team` `/team/[professionalId]` `/inquiries` `/stats`) |
+| Platform admin | `/admin` `/admin/companies` `/admin/companies/[id]` `/admin/professionals` `/admin/professionals/[id]` `/admin/claims` `/admin/inquiries` `/admin/users` `/admin/taxonomies/[taxonomy]` `/admin/locations` |
 
-# pnpm
-pnpm build
+Screens with several states take a `state` prop that the page reads from `?state=` while the
+UI is static — for example `/find?state=error`, `/login?state=verify`, `/login?state=linked`,
+`/login/verify?account=new`, `/onboarding?state=pending`, `/claim/any-token?state=invalid` and
+`/dashboard/account?google=stale`. When the API is connected, the page derives the state from
+responses instead.
 
-# yarn
-yarn build
+Google sign-in is a Laravel browser redirect (`/auth/google/redirect` → Google → callback →
+`/login/verify`). The static button goes straight to `/login/verify`; from the register page it
+previews a first-time account, which continues to `/onboarding`.
 
-# bun
-bun run build
-```
+## Wiring the API later
 
-Locally preview production build:
+- Every API-shaped read goes through a store (`app/stores/README.md`). Wiring the API means
+  changing the stores' members to call the typed client — pages and components already use the
+  stores and receive API-shaped props.
+- `useSessionStore` stands in for `GET /api/me`; `useDirectoryStore` for `GET /api/companies`,
+  `/api/companies/{slug}`, `/api/professionals` and `/api/professionals/{slug}`.
+- Forms emit API-shaped payloads (see `types/features/inquiry.ts`) and currently fake success.
+- Add route middleware (`app/middleware/README.md`) and a session store when auth is live.
 
-```bash
-# npm
-npm run preview
+## Conventions
 
-# pnpm
-pnpm preview
-
-# yarn
-yarn preview
-
-# bun
-bun run preview
-```
-
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+Follows `myblog/PROMPT.md`: BEM blocks named after the component file, scoped SCSS in every
+section, tokens only (no hex in components), `block > .wrapper > .block__con` section markup,
+snake_case locals, typed props with `withDefaults`. Headings are `MHeading` and paragraphs are
+`MText`, sized from the type scale in `base/_typography.scss`, not with scoped font sizes.
+Types live in `app/types/`, never in data or component files.

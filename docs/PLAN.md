@@ -136,14 +136,16 @@ Buyer accounts, saved profiles, multi-provider RFQs, and in-app messaging are no
 
 ### 4.5 Accounts and dashboards — Phase 1
 
-- Register / sign in through Laravel Sanctum SPA sessions. Every fresh sign-in uses a password followed by an emailed code, including company users, sales professionals, account-only claim/invitation users, and platform admins; no trusted-device bypass at launch.
+- Register / sign in through Laravel Passport browser-cookie authentication backed by live Laravel sessions. A password or a linked Google identity starts sign-in; every fresh sign-in then requires an emailed code, including company users, sales professionals, account-only claim/invitation users, and platform admins. Socialite handles Google; there is no trusted-device bypass at launch.
 - Registration paths:
   - Create a company (becomes company admin).
   - Register as a sales professional with required `company_id` and `job_title`; create a draft profile with `affiliation_status = pending`.
   - Create an ordinary account for claim/invitation onboarding through `POST /api/register`; this adds no buyer role or company membership.
   - Invite-only platform admin.
-- Registration creates an unverified account and the appropriate draft records, returns `201` with `next_action = login`, and does not sign the user in. Password acceptance starts a session-bound email challenge (`202`); a successful code check completes sign-in (`200`) and sets `email_verified_at` on first verification. Protected routes remain unavailable until then.
-- Authentication uses a server-side session with an `HttpOnly` cookie (`Secure` in production, `SameSite=Lax`); the separate CSRF cookie remains readable by the frontend. Do not return access tokens in JSON or store them in localStorage/sessionStorage. Cookie scope, code expiry, attempt/resend limits, and API details are defined in the [auth flow](ARCHITECTURE.md#5-auth-flow) and [setup intent](SETUP.md#4-auth-setup-intent).
+- Password registration creates an unverified account and the appropriate draft records, returns `201` with `next_action = login`, and does not sign the user in. Password acceptance starts a session-bound email challenge (`202`); Google sign-in starts the same challenge. A successful code check creates the authenticated web session (`200`) and sets `email_verified_at` on first verification. The browser then refreshes CSRF and obtains its Passport cookie from `GET /auth/session` before accessing protected API routes.
+- Google identities are linked by their stable provider subject, not automatically merged by matching email. Existing users sign in through an existing method and explicitly link Google after a recent completed login. A new Google account has no password, company, professional, or membership initially; after the emailed-code check it can complete company/professional onboarding or an existing claim/invitation. Google sign-in never creates platform-admin privileges.
+- Authentication uses both an `HttpOnly` Laravel session cookie and Passport's encrypted JWT `laravel_token` cookie (`Secure` in production, `SameSite=Lax`); the separate CSRF cookie remains readable by the frontend. Every protected browser API request, including `GET`, sends the CSRF header and must pass Passport plus a live-session check for the same user and current `auth_version`. Do not return credentials in JSON or store tokens in localStorage/sessionStorage. Cookie scope, code expiry, attempt/resend limits, and API details are defined in the [auth flow](ARCHITECTURE.md#5-auth-flow) and [setup intent](SETUP.md#4-auth-setup-intent).
+- Passport migrations and signing keys are provisioned now for future integrations. External OAuth clients and authorization/token issuance endpoints remain disabled at launch; later integrations require authorization code with PKCE, explicit consent/scopes, and their own API authorization design.
 - Password reset/change, email change, account deletion/restoration, and platform-role changes invalidate prior sessions and pending challenges. Authorization always uses the current account, role, and accepted membership.
 - Company dashboard: edit company profile, manage locations/services/industries, manage team, view inquiries, view basic stats.
 - Sales dashboard: edit own profile, view own inquiries, view basic stats.
@@ -199,7 +201,7 @@ Premium placement never overrides relevance, completeness, verification, locatio
 - Compare BPOs.
 - Client RFQs and multi-provider inquiries.
 - Buyer-submitted reviews and testimonials. Company-supplied client proof can appear in Phase 1 within `companies.overview`, labeled as company-provided content and distinct from platform verification.
-- CRM integrations.
+- CRM integrations and third-party OAuth access. Passport is provisioned in Phase 1; client registration, delegated scopes/consent, and external authorization/token issuance remain later work.
 - Full lead CRM for companies.
 - Intelligent matching.
 - Jobs / talent.
@@ -304,7 +306,7 @@ Organic growth also includes shareable company/professional profile links and, a
 
 Ship a usable public directory and the minimum write-path:
 
-- Password plus emailed-code sign-in and first-login email verification (company admin + sales professional + platform admin, plus accounts awaiting claim/invitation onboarding)
+- Passport browser-cookie authentication, password or Google sign-in followed by an emailed code, and first-login email verification (company admin + sales professional + platform admin, plus accounts awaiting claim/invitation onboarding)
 - Taxonomies and locations
 - Company and sales profiles (create, edit, publish)
 - Public home, search, directories, profile pages
@@ -349,7 +351,7 @@ This is the first public launch and includes the brief's launch trust features (
 
 In priority order:
 
-1. Users, roles, Sanctum sessions, password plus emailed-code sign-in, and first-login email verification
+1. Users, roles, Passport browser-cookie authentication with live sessions, Socialite Google sign-in, emailed-code checks, and first-login email verification
 2. Services, industries, locations, and other taxonomies
 3. Company entity and public company profile
 4. Sales professional entity with pending/approved affiliation and team invitation acceptance
@@ -369,8 +371,10 @@ Out of Phase 1 even if useful:
 
 Phase 1 acceptance checks:
 
-- Every account type must complete password and emailed-code checks before accessing protected routes. Registration and a password-only challenge grant no authenticated session; first successful code verification marks the email verified without awarding a profile verification badge.
-- Session cookies are `HttpOnly` and `Secure` in production; the readable CSRF cookie and header still protect browser writes. Access tokens never enter localStorage/sessionStorage or JSON response payloads.
+- Every account type must complete password or Google sign-in and the emailed-code check before accessing protected routes. Registration and either initial sign-in step alone grant no authenticated session; first successful code verification marks the email verified without awarding a profile verification badge.
+- Laravel session and Passport cookies are `HttpOnly` and `Secure` in production; the readable CSRF cookie and header protect browser writes and are also required for protected API `GET` requests. Tokens never enter localStorage/sessionStorage or JSON response payloads. The post-verification Passport bootstrap requires the live authenticated web session.
+- Invalid/replayed Google state and duplicate provider identities fail; matching email never silently merges accounts. Explicit linking requires a recent completed login. First-time Google onboarding creates only the intended company/professional records, without administrative privileges.
+- A copied Passport cookie cannot bypass a destroyed or stale web session. Phase 1 browser API routes reject bearer credentials, and external OAuth authorization/token issuance routes remain unavailable.
 - Expired, reused, replaced, exhausted, or differently session-bound codes fail. Resend does not reset attempt counts or expiry; account and IP limits work across instances. Reset, email change, and deletion/restoration invalidate old sessions and challenges.
 - A buyer can discover a company or professional and submit a valid inquiry without an account; a mismatched professional/company target is rejected.
 - Pending professionals remain draft and cannot publish; affiliation approval creates membership without granting company-administration rights.
@@ -390,13 +394,13 @@ These are implementation defaults, not requirements prescribed by the PDF. Chang
 2. **A sales professional references one company.** Self-registration requires company and job title, with affiliation pending until approved; multi-company representation is later.
 3. **Company admin can invite team members by email.** Professionals can also register and request affiliation.
 4. **Unclaimed companies can exist** so the directory can be seeded. Only claimed profiles are fully editable by the company.
-5. **Nuxt/Vue/TypeScript, Laravel/Sanctum, and PostgreSQL** are the chosen stack. Confirm exact version compatibility when implementation begins.
+5. **Nuxt/Vue/TypeScript, Laravel/Passport with Socialite for Google, and PostgreSQL** are the chosen stack. Passport is selected now for future OAuth readiness; confirm exact version compatibility when implementation begins.
 6. **One inquiry table** covers contact, question, and quote-request via a `type` field.
 7. **Soft deletes** on users, companies, professionals, inquiries, articles, and taxonomy terms.
 8. **English-first UI.** Languages listed on profiles are capabilities, not a translated product in Phase 1.
 9. **Media** is logo, cover, and professional photo stored as files referenced from the API. No video in Phase 1.
 10. **Company plans exist in data** (`basic`, `professional`, `premium`) with a default of `basic`. Payment provider and any individual Pro plan are Phase 3 or later.
-11. **Every fresh account sign-in requires a password and emailed code.** Sanctum uses an `HttpOnly` server-session cookie; the first successful code check verifies the email. The PDF does not prescribe this authentication mechanism or its code limits.
+11. **Every fresh account sign-in requires a password or Google identity, then an emailed code.** Passport's `HttpOnly` browser cookie is paired with a live Laravel session; the first successful code check verifies the email. Google uses Socialite and does not replace the emailed-code requirement. The PDF does not prescribe this authentication mechanism or its code limits.
 
 ---
 
@@ -418,7 +422,8 @@ These defaults are treated as decided so database and API work can proceed; they
 2. Buyers stay **anonymous inquirers** in Phase 1. No buyer accounts.
 3. **No checkout in Phase 1.** Plans exist as fields. Platform admins apply upgrades manually until Phase 3 billing.
 4. **Phase 1 is public launch.** Company claims, affiliation approval, completeness, and manual verification ship together.
-5. **Password plus emailed-code sign-in for all account types.** An `HttpOnly` Sanctum session is authenticated only after the code succeeds; first-login email verification is distinct from company/professional identity review.
+5. **Password or Google sign-in, followed by an emailed code for all account types.** Google uses Socialite; Passport supplies browser-cookie API authentication after the code succeeds, with a live Laravel session check. First-login email verification is distinct from company/professional identity review.
+6. **Passport now, delegated OAuth access later.** Passport's migrations and keys are planned for launch. Exposing external clients, scopes, consent, and authorization/token issuance is separate implementation work; Google login is the app acting as Google's client.
 
 | PDF pages | Requirement carried into this plan |
 | --- | --- |

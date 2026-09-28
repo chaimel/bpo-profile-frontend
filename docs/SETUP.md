@@ -9,9 +9,9 @@ How this would be built later. Not a scaffold. No install command dump. Product 
 | App | Stack | Role |
 | --- | --- | --- |
 | `web` | Nuxt 4, Vue 3, TypeScript | Public site + dashboards |
-| `api` | Laravel 13, compatible PHP runtime, PostgreSQL, Sanctum | JSON API |
+| `api` | Laravel 13, compatible PHP runtime, PostgreSQL, Passport, Socialite | JSON API + Google sign-in |
 
-Prefer one public hostname later (`bpoprofile.com`) with `/api` and `/sanctum` proxied to Laravel. When using local public media, serve `/storage/**` from Laravel's public disk. Other routes go to Nuxt; server-rendered data requests use a separate absolute Laravel API base.
+Prefer one public hostname later (`bpoprofile.com`) with `/api` and `/auth` proxied to Laravel, including the Google callback. When using local public media, serve `/storage/**` from Laravel's public disk. Other routes go to Nuxt; server-rendered data requests use a separate absolute Laravel API base. Keep external OAuth authorization/token issuance routes unavailable at launch; provisioning Passport does not authorize third-party integrations.
 
 Before scaffolding, verify supported PHP, Node, database, framework, and package versions against the selected releases' official requirements. This planning document does not establish a tested compatibility matrix.
 
@@ -21,7 +21,7 @@ Before scaffolding, verify supported PHP, Node, database, framework, and package
 
 1. Laravel project, PostgreSQL, migrations matching `docs/DATABASE.md`
 2. Seed plans, services, industries, languages, capabilities, technologies, countries
-3. Sanctum SPA auth with password plus emailed-code sign-in, first-login email verification, and `/api/me`
+3. Passport browser-cookie auth with live Laravel sessions, password or Google sign-in followed by an emailed code, first-login email verification, and `/api/me`
 4. Company/professional write APIs, pending affiliation approval, and company-scoped policies
 5. Public show/index + search
 6. Nuxt public pages against those endpoints
@@ -43,7 +43,9 @@ Phase 1 is public launch, so the minimum claim and manual verification workflows
 - Nuxt public origin
 - Laravel app URL and server-only absolute API base for Nuxt SSR
 - Browser API base (same-origin `/api` by default)
-- Sanctum stateful frontend hosts and ports, session cookie security flags, and optional cookie domain (host-only by default)
+- Laravel session and Passport cookie security flags, session lifetime, and optional cookie domain (host-only by default)
+- Passport signing keys, kept server-side and provisioned separately from the Laravel app key
+- Google OAuth client ID, client secret, and exact server callback URL for Socialite; these identify the app to Google, not clients of our Passport OAuth server
 - PostgreSQL connection and server-side session store
 - Shared cache/rate-limit store across API instances
 - Mailer and login-code delivery configuration
@@ -56,20 +58,24 @@ Exact `.env` keys belong in the repos when they exist, not here.
 
 ## 4. Auth setup intent
 
-The launch sign-in default is password followed by an emailed code for every company, professional, account-only onboarding user, and platform admin. This is an implementation choice, not a login mechanism prescribed by the PDF; there is no trusted-device bypass at launch.
+The launch sign-in default is a password or a linked Google account, followed by the same emailed-code check for every company, professional, account-only onboarding user, and platform admin. Passport is selected now for future OAuth integration readiness; Socialite handles Google sign-in. These are implementation choices, not login mechanisms prescribed by the PDF; there is no trusted-device bypass at launch.
 
-- Sanctum SPA mode with stateful API middleware; follow the [auth flow](ARCHITECTURE.md#5-auth-flow) and [environment rules](ARCHITECTURE.md#8-environments) for credentials, CSRF headers, hosts/ports, and optional subdomain CORS
-- Server-side sessions use an `HttpOnly` cookie with `Secure` in production, `SameSite=Lax`, `Path=/`, and host-only scope for the default same-origin deployment. Keep the separate `XSRF-TOKEN` cookie JavaScript-readable for the CSRF header; send credentials and CSRF headers on browser writes. Do not return access tokens in JSON or store them in localStorage/sessionStorage
+- Install Passport's framework migrations and provision its signing keys; configure the API guard for Passport and the Laravel `web` session middleware for browser routes. Socialite is the separate Google OAuth client. Follow the [auth flow](ARCHITECTURE.md#5-auth-flow) and [environment rules](ARCHITECTURE.md#8-environments) for middleware order, cookies, CSRF, and optional subdomain CORS
+- Both the Laravel session cookie and Passport's encrypted JWT `laravel_token` cookie are `HttpOnly`, with `Secure` in production, `SameSite=Lax`, `Path=/`, and host-only scope for the default same-origin deployment. Keep the separate `XSRF-TOKEN` cookie JavaScript-readable. Send credentials and `X-XSRF-TOKEN` on every protected browser API request, including `GET`, and on every browser write. Do not return credentials in JSON or store tokens in localStorage/sessionStorage
+- Provide a custom `GET /auth/csrf-cookie` endpoint under Laravel's web middleware. Browser API routes require Passport `auth:api` plus a live web session for the same active, email-verified user and current `auth_version`; Passport cookie validation alone does not prove that the server-side session still exists. Reject bearer credentials on these Phase 1 browser routes
 - Registration creates an unverified user and the appropriate draft records, returns `201` with `next_action = login`, and grants no authenticated session
-- A valid password at `POST /api/login` returns `202` with `email_code_required`. The pending challenge is bound to the current pre-authentication session; `/api/me` and protected routes return `401` until `POST /api/login/verify` succeeds with `200`. Success consumes the code, marks `email_verified_at` on first verification, and regenerates the authenticated session
+- A valid password at `POST /api/login` returns `202` with `email_code_required`. A successful Google sign-in starts the same pending challenge. Both remain bound to the pre-authentication session; `/api/me` and protected routes return `401` while the challenge is pending. `POST /api/login/verify` consumes the code, marks `email_verified_at` on first verification, regenerates the authenticated web session, and returns `200` without a Passport cookie. The browser refreshes CSRF, calls authenticated `GET /auth/session` to receive the Passport cookie, then loads `/api/me`
+- Google sign-in uses `GET /auth/google/redirect` and `GET /auth/google/callback`; retain Socialite's session-bound state verification and do not use `stateless()`. Bind identities by Google's stable subject ID in `social_accounts`, never by email alone. A matching existing email requires the user to sign in through an existing method and explicitly link Google through `POST /api/account/google/link` after a recent completed login. Do not persist Google access/refresh tokens
+- A new Google identity creates only an unverified account with a nullable password and no company, professional, or membership. After completing the emailed code, the user can use `POST /api/onboarding/company` or `/api/onboarding/professional` under the registration rules, or proceed with an existing claim/invitation
 - `POST /api/login/resend` returns `202`. Planned defaults: cryptographically random six-digit code, 10-minute expiry, five failed attempts across resends, 60-second resend cooldown, and at most three sends including the initial email per account per 15 minutes. Enforce shared account and IP limits; resending neither extends the challenge deadline nor resets failed attempts
 - Claims and invitation acceptance require the authenticated user's verified intended email; login email verification does not confer company/professional verification badges
-- Password reset/change, email change, account deletion/restoration, and platform-role changes invalidate existing sessions and pending challenges through `auth_version`; every protected request also checks the current account, role, and membership
+- Password reset/change, email change, account deletion/restoration, and platform-role changes invalidate existing sessions and pending challenges through `auth_version`; every protected request also checks the current account, role, and membership. Logout destroys the web session and expires both authentication cookies; a copied or late-written Passport cookie must fail the live-session/version check
 - Professional self-registration requires company and job title, creates a draft/pending affiliation, and grants company membership only after owner/admin or platform-admin approval
 - Ordinary account registration supports claim/invitation onboarding without creating a buyer role or implicit company membership
 - Company dashboard routes include `companyId`; authorize each request against that user's accepted membership and role in the selected company
 - Claim approval precedes token issuance; token acceptance grants ownership atomically. Invitation acceptance attaches an existing roster profile where applicable, without duplication
-- Platform admin seeded once, not registered from the public form
+- Platform admin seeded once, not registered from the public form; Google sign-in never assigns administrative roles
+- Do not enable external OAuth clients or expose `/oauth` authorization/token issuance endpoints in Phase 1. When an integration is approved later, define its separate bearer routes, consent, exact redirect allowlist, least-privilege scopes, authorization code with PKCE, and refresh-token rotation/revocation. Do not enable password or implicit grants
 
 ---
 
@@ -129,7 +135,7 @@ Use neutral, clear, non-blaming system language, with a useful recovery action. 
 
 Before launch, check keyboard navigation/focus, field labels and errors, color contrast, informative/decorative image alternatives, mobile layout, and each empty/error state on the actual search, profile, and inquiry flows. Also verify anonymous SSR data loading, a first anonymous inquiry, login/logout and CSRF expiry, protected dashboard requests, and public media URLs through the intended proxy topology.
 
-Auth checks must cover every account type: registration and password-only login cannot open a dashboard; a valid code verifies the email and creates a fresh authenticated session; expired, replayed, exhausted, replaced, or differently session-bound codes fail. Verify resend limits across instances, delivery-failure recovery without granting access, production cookie flags, readable CSRF-cookie handling, and session/challenge rejection after reset, email change, deletion, or restoration. Preserve non-secret form input on recoverable errors and clear passwords/codes after use. Never automatically replay a failed write after session or CSRF expiry.
+Auth checks must cover every account type and both password and Google entry paths: registration, password acceptance, and a Google callback alone cannot open a dashboard. A valid emailed code creates a fresh web session; protected API access also requires the subsequent Passport cookie bootstrap. Test missing/incorrect CSRF on protected `GET` requests, both cookies' production flags, bearer rejection, and live-session rejection of a copied Passport cookie after logout, reset, email change, deletion, or restoration. Verify expired, replayed, exhausted, replaced, or differently session-bound codes fail; resend limits work across instances; and delivery failure grants no access. Google checks cover wrong/replayed state, duplicate subject identities, email conflicts without automatic merging, explicit linking with a recent completed login, and first-time account onboarding. Confirm external OAuth issuance endpoints remain unavailable. Preserve non-secret form input on recoverable errors and clear passwords/codes after use. Never automatically replay a failed write after session or CSRF expiry.
 
 ---
 

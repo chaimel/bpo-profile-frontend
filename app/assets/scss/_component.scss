@@ -1,0 +1,2163 @@
+// =============================================================
+// COMPONENT
+// Global styles for every base M-component. Centralised here
+// (instead of scoped blocks inside each SFC) so the whole
+// primitive layer lives in one place. All classes are m-prefixed,
+// so global scope is safe. Consumes the tokens from base/.
+// =============================================================
+
+// -------------------------------------------------------------
+// MText / MHeading
+// Size and weight come from the global typography utilities;
+// these are semantic hooks for overrides.
+// -------------------------------------------------------------
+.m-text {
+	color: inherit;
+}
+
+.m-heading {
+	color: var(--text-primary);
+}
+
+// -------------------------------------------------------------
+// MIcon
+// -------------------------------------------------------------
+.m-icon {
+	display: inline-block;
+	flex: 0 0 auto;
+	max-width: none;
+	overflow: visible;
+	vertical-align: middle;
+
+	&--missing {
+		visibility: hidden;
+	}
+}
+
+// -------------------------------------------------------------
+// MButton
+// -------------------------------------------------------------
+.m-button {
+	--btn-bg: var(--brand-strong);
+	--btn-fg: var(--white);
+	--btn-border: var(--brand-strong);
+
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+
+	border: 1px solid var(--btn-border);
+	border-radius: var(--radius-sm);
+	background: var(--btn-bg);
+	color: var(--btn-fg);
+
+	font-family: var(--font-ui);
+	font-weight: 600;
+	line-height: 1;
+	letter-spacing: 0.005em;
+	text-align: center;
+	white-space: nowrap;
+	user-select: none;
+	cursor: pointer;
+
+	transition:
+		background-color 0.15s ease,
+		border-color 0.15s ease,
+		color 0.15s ease;
+
+	&:disabled,
+	&[aria-disabled='true'] {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+}
+
+// --- Sizes ----------------------------------------------------
+.m-button--sm {
+	height: 36px;
+	padding-inline: 14px;
+	font-size: 13px;
+}
+
+.m-button--md {
+	height: 44px;
+	padding-inline: 18px;
+	font-size: 14px;
+}
+
+.m-button--lg {
+	height: 52px;
+	padding-inline: 24px;
+	font-size: 16px;
+}
+
+.m-button--block {
+	display: flex;
+	width: 100%;
+}
+
+// --- Variants -------------------------------------------------
+.m-button--primary {
+	&:hover:not(:disabled):not([aria-disabled='true']) {
+		--btn-bg: var(--brand-deep);
+		--btn-border: var(--brand-deep);
+	}
+}
+
+.m-button--secondary {
+	--btn-bg: var(--slate);
+	--btn-fg: var(--white);
+	--btn-border: var(--slate);
+
+	&:hover:not(:disabled):not([aria-disabled='true']) {
+		--btn-bg: var(--slate-deep);
+		--btn-border: var(--slate-deep);
+	}
+}
+
+.m-button--outline {
+	--btn-bg: transparent;
+	--btn-fg: var(--brand-strong);
+	--btn-border: var(--brand-strong);
+
+	&:hover:not(:disabled):not([aria-disabled='true']) {
+		--btn-bg: var(--brand-soft);
+		--btn-fg: var(--brand-deep);
+		--btn-border: var(--brand-deep);
+	}
+}
+
+.m-button--neutral {
+	--btn-bg: var(--white);
+	--btn-fg: var(--text-primary);
+	--btn-border: var(--border-strong);
+
+	&:hover:not(:disabled):not([aria-disabled='true']) {
+		--btn-bg: var(--canvas);
+		--btn-border: var(--border-input);
+	}
+}
+
+// Inline link-style action: no box, underline on hover.
+.m-button--text {
+	--btn-bg: transparent;
+	--btn-fg: var(--brand-strong);
+	--btn-border: transparent;
+
+	height: auto;
+	padding-inline: 0;
+	border-width: 0;
+
+	&:hover:not(:disabled):not([aria-disabled='true']) {
+		--btn-fg: var(--brand-deep);
+		text-decoration: underline;
+		text-underline-offset: 3px;
+	}
+}
+
+.m-button--ghost {
+	--btn-bg: transparent;
+	--btn-fg: var(--text-primary);
+	--btn-border: transparent;
+
+	&:hover:not(:disabled):not([aria-disabled='true']) {
+		--btn-bg: var(--surface-muted);
+	}
+}
+
+.m-button--destructive {
+	--btn-bg: var(--danger);
+	--btn-fg: var(--white);
+	--btn-border: var(--danger);
+
+	&:hover:not(:disabled):not([aria-disabled='true']) {
+		--btn-bg: var(--ink);
+		--btn-border: var(--ink);
+	}
+}
+
+// White on slate or ink bands.
+.m-button--inverse {
+	--btn-bg: var(--white);
+	--btn-fg: var(--slate);
+	--btn-border: var(--white);
+
+	&:hover:not(:disabled):not([aria-disabled='true']) {
+		--btn-bg: var(--brand-soft);
+		--btn-border: var(--brand-soft);
+	}
+
+	&:focus-visible {
+		outline-color: var(--white);
+	}
+}
+
+// --- Loading spinner ------------------------------------------
+.m-button--loading {
+	cursor: progress;
+}
+
+.m-button-loader {
+	width: 1em;
+	height: 1em;
+	border-radius: 50%;
+	border: 2px solid currentColor;
+	border-top-color: transparent;
+	animation: m-spin 0.8s linear infinite;
+}
+
+@keyframes m-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+// -------------------------------------------------------------
+// MButtonIcon — icon-only control; the title is its name.
+// -------------------------------------------------------------
+.m-button-icon {
+	display: inline-grid;
+	place-items: center;
+	flex: 0 0 auto;
+
+	border: 1px solid transparent;
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
+	transition:
+		background-color 0.15s ease,
+		border-color 0.15s ease,
+		color 0.15s ease;
+
+	&--sm {
+		width: 32px;
+		height: 32px;
+	}
+
+	&--md {
+		width: 40px;
+		height: 40px;
+	}
+
+	&--lg {
+		width: 48px;
+		height: 48px;
+	}
+
+	&--radius-sm {
+		border-radius: var(--radius-xs);
+	}
+
+	&--radius-md {
+		border-radius: var(--radius-sm);
+	}
+
+	&--radius-lg {
+		border-radius: var(--radius-md);
+	}
+
+	&--radius-full {
+		border-radius: 50%;
+	}
+
+	&--default:hover {
+		background: var(--surface-muted);
+		color: var(--text-primary);
+	}
+
+	&--ghost:hover {
+		background: var(--canvas);
+		color: var(--text-primary);
+	}
+
+	&--outline {
+		border-color: var(--border-strong);
+		background: var(--white);
+
+		&:hover {
+			border-color: var(--border-input);
+			color: var(--text-primary);
+		}
+	}
+
+	&--inverse {
+		color: var(--on-dark-muted);
+
+		&:hover {
+			background: var(--on-dark-hover);
+			color: var(--white);
+		}
+
+		&:focus-visible {
+			outline-color: var(--white);
+		}
+	}
+
+	&--active {
+		background: var(--slate);
+		border-color: var(--slate);
+		color: var(--white);
+
+		&:hover {
+			background: var(--slate-deep);
+			color: var(--white);
+		}
+	}
+
+	&--disabled,
+	&:disabled {
+		opacity: 0.4;
+		pointer-events: none;
+	}
+}
+
+// -------------------------------------------------------------
+// Shared field parts — label suffix, hint and error lines used by
+// MInput, MTextarea, MSelect and MCodeInput.
+// -------------------------------------------------------------
+.m-field-optional {
+	margin-left: 6px;
+	font-size: 12px;
+	font-weight: 400;
+	color: var(--text-muted);
+}
+
+.m-field-hint {
+	margin-top: 6px;
+	font-family: var(--font-base);
+	font-size: 14px;
+	line-height: 20px;
+	color: var(--text-muted);
+}
+
+.m-field-error {
+	display: flex;
+	align-items: flex-start;
+	gap: 6px;
+	margin-top: 6px;
+	font-family: var(--font-ui);
+	font-size: 13px;
+	line-height: 18px;
+	color: var(--danger);
+
+	.m-icon {
+		margin-top: 2px;
+	}
+}
+
+// -------------------------------------------------------------
+// MInput — container > label > inner. The bare <input> only
+// carries the caret and value; the inner div is the control.
+// -------------------------------------------------------------
+.m-input-container {
+	width: 100%;
+
+	&--disabled {
+		.m-input-inner {
+			pointer-events: none;
+			opacity: 0.5;
+		}
+	}
+}
+
+.m-input-label,
+.m-textarea-label,
+.m-select-label {
+	display: flex;
+	align-items: baseline;
+	margin-bottom: 8px;
+	font-family: var(--font-ui);
+	font-size: 14px;
+	font-weight: 500;
+	line-height: 20px;
+	color: var(--text-primary);
+}
+
+.m-input-inner {
+	display: flex;
+	justify-content: flex-start;
+	align-items: center;
+	padding: 0 14px;
+	cursor: text;
+
+	background: var(--white);
+	box-shadow: inset 0 0 0 1px var(--border-input);
+	transition: box-shadow 0.15s ease;
+
+	&--radius-sm {
+		border-radius: var(--radius-sm);
+	}
+
+	&--radius-md {
+		border-radius: var(--radius-md);
+	}
+
+	&--radius-full {
+		border-radius: var(--radius-full);
+	}
+
+	&--focused {
+		box-shadow: inset 0 0 0 2px var(--brand);
+	}
+
+	&--error,
+	&--error.m-input-inner--focused {
+		box-shadow: inset 0 0 0 2px var(--danger);
+	}
+
+	&--readonly {
+		background: var(--surface-muted);
+		box-shadow: inset 0 0 0 1px var(--border);
+	}
+
+	.m-inner {
+		display: inline-flex;
+		justify-content: center;
+		align-items: center;
+		flex: 0 0 auto;
+		color: var(--text-muted);
+	}
+
+	.m-inner-left {
+		margin-right: 10px;
+	}
+
+	.m-inner-right {
+		margin-left: 10px;
+	}
+
+	input.m-input {
+		all: unset;
+		box-sizing: border-box;
+		display: block;
+		flex: 1 1 auto;
+		min-width: 0;
+		width: 100%;
+		height: 100%;
+		font-family: var(--font-ui);
+		font-size: 15px;
+		color: var(--text-primary);
+		background: transparent;
+
+		&::placeholder {
+			color: var(--text-muted);
+		}
+
+		// Chrome repaints autofilled fields; the inset shadow keeps ours.
+		&:-webkit-autofill,
+		&:-webkit-autofill:hover,
+		&:-webkit-autofill:focus {
+			-webkit-text-fill-color: var(--text-primary);
+			-webkit-box-shadow: 0 0 0 1000px var(--white) inset;
+			box-shadow: 0 0 0 1000px var(--white) inset;
+			transition: background-color 9999s ease-in-out 0s;
+		}
+
+		// the browser's own search affordance duplicates our clear button
+		&::-webkit-search-cancel-button {
+			appearance: none;
+		}
+
+		&.text-right {
+			text-align: right;
+		}
+
+		&.text-center {
+			text-align: center;
+		}
+	}
+}
+
+.m-input-reveal {
+	display: inline-grid;
+	place-items: center;
+	flex: 0 0 auto;
+	width: 32px;
+	height: 32px;
+	margin-right: -6px;
+	border-radius: var(--radius-xs);
+	color: var(--text-muted);
+	cursor: pointer;
+
+	&:hover {
+		background: var(--surface-muted);
+		color: var(--text-primary);
+	}
+}
+
+// -------------------------------------------------------------
+// MSearch — MInput wired as a search field.
+// -------------------------------------------------------------
+.m-search {
+	width: 100%;
+
+	&__icon {
+		color: var(--text-muted);
+	}
+
+	&__clear {
+		display: inline-grid;
+		place-items: center;
+		width: 24px;
+		height: 24px;
+		border-radius: 50%;
+		background: var(--surface-muted);
+		color: var(--text-secondary);
+		cursor: pointer;
+
+		&:hover {
+			background: var(--border);
+			color: var(--text-primary);
+		}
+	}
+}
+
+// -------------------------------------------------------------
+// MTextarea
+// -------------------------------------------------------------
+.m-textarea-container {
+	width: 100%;
+
+	&--disabled {
+		.m-textarea-inner {
+			pointer-events: none;
+			opacity: 0.5;
+		}
+	}
+}
+
+.m-textarea-inner {
+	padding: 12px 14px;
+	border-radius: var(--radius-sm);
+	background: var(--white);
+	box-shadow: inset 0 0 0 1px var(--border-input);
+	cursor: text;
+	transition: box-shadow 0.15s ease;
+
+	&--focused {
+		box-shadow: inset 0 0 0 2px var(--brand);
+	}
+
+	&--error,
+	&--error.m-textarea-inner--focused {
+		box-shadow: inset 0 0 0 2px var(--danger);
+	}
+
+	&--readonly {
+		background: var(--surface-muted);
+		box-shadow: inset 0 0 0 1px var(--border);
+	}
+}
+
+.m-textarea {
+	all: unset;
+	box-sizing: border-box;
+	display: block;
+	width: 100%;
+	font-family: var(--font-base);
+	font-size: 16px;
+	line-height: 25px;
+	color: var(--text-primary);
+	white-space: pre-wrap;
+	resize: vertical;
+
+	&::placeholder {
+		color: var(--text-muted);
+	}
+}
+
+.m-textarea-foot {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 12px;
+
+	.m-field-hint:empty {
+		display: none;
+	}
+}
+
+.m-textarea-count {
+	flex: 0 0 auto;
+	margin-top: 6px;
+	margin-left: auto;
+	font-family: var(--font-ui);
+	font-size: 12px;
+	color: var(--text-muted);
+}
+
+// -------------------------------------------------------------
+// MSelect — native select in the MInput shell.
+// -------------------------------------------------------------
+.m-select-container {
+	width: 100%;
+
+	&--disabled {
+		.m-select-inner {
+			pointer-events: none;
+			opacity: 0.5;
+		}
+	}
+}
+
+.m-select-inner {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: var(--select-height, 44px);
+	padding: 0 14px;
+	border-radius: var(--radius-sm);
+	background: var(--white);
+	box-shadow: inset 0 0 0 1px var(--border-input);
+	transition: box-shadow 0.15s ease;
+
+	&--focused {
+		box-shadow: inset 0 0 0 2px var(--brand);
+	}
+
+	&--error,
+	&--error.m-select-inner--focused {
+		box-shadow: inset 0 0 0 2px var(--danger);
+	}
+
+	&--placeholder .m-select {
+		color: var(--text-secondary);
+	}
+
+	.m-inner {
+		display: inline-flex;
+		color: var(--text-muted);
+	}
+}
+
+// `all: unset` drops the native vertical centring, so the padding
+// centres one 22px line in the field's height instead.
+.m-select {
+	all: unset;
+	box-sizing: border-box;
+	flex: 1 1 auto;
+	min-width: 0;
+	width: 100%;
+	height: 100%;
+	padding: calc((var(--select-height, 44px) - 22px) / 2) 22px calc((var(--select-height, 44px) - 22px) / 2) 0;
+	font-family: var(--font-ui);
+	font-size: 15px;
+	line-height: 22px;
+	color: var(--text-primary);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	cursor: pointer;
+
+	option {
+		color: var(--text-primary);
+	}
+}
+
+.m-select-caret {
+	position: absolute;
+	right: 14px;
+	color: var(--text-muted);
+	pointer-events: none;
+}
+
+// -------------------------------------------------------------
+// MCheckbox / MRadio — native input kept for keyboard and AT,
+// visually replaced by the box/dot.
+// -------------------------------------------------------------
+.m-checkbox,
+.m-radio {
+	position: relative;
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	font-family: var(--font-ui);
+	font-size: 14px;
+	line-height: 20px;
+	color: var(--text-primary);
+	cursor: pointer;
+
+	&--disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+}
+
+.m-checkbox__input,
+.m-radio__input {
+	position: absolute;
+	width: 20px;
+	height: 20px;
+	margin: 0;
+	opacity: 0;
+	cursor: inherit;
+}
+
+.m-checkbox__box {
+	display: inline-grid;
+	place-items: center;
+	flex: 0 0 auto;
+	width: 20px;
+	height: 20px;
+	border-radius: var(--radius-xs);
+	background: var(--white);
+	box-shadow: inset 0 0 0 1px var(--border-input);
+	color: transparent;
+	transition:
+		background-color 0.15s ease,
+		box-shadow 0.15s ease;
+}
+
+.m-checkbox--checked .m-checkbox__box {
+	background: var(--brand-strong);
+	box-shadow: inset 0 0 0 1px var(--brand-strong);
+	color: var(--white);
+}
+
+.m-checkbox--error .m-checkbox__box {
+	box-shadow: inset 0 0 0 2px var(--danger);
+}
+
+// the error lines up with the label text, past the 20px box and its gap
+.m-checkbox-field > .m-field-error {
+	margin-top: 4px;
+	padding-left: 30px;
+}
+
+.m-checkbox__input:focus-visible + .m-checkbox__box,
+.m-radio__input:focus-visible + .m-radio__dot {
+	outline: 2px solid var(--brand);
+	outline-offset: 2px;
+}
+
+.m-checkbox__text,
+.m-radio__text {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+
+.m-checkbox__description,
+.m-radio__description {
+	font-family: var(--font-base);
+	font-size: 14px;
+	line-height: 20px;
+	color: var(--text-secondary);
+}
+
+.m-checkbox__meta,
+.m-radio__meta {
+	flex: 0 0 auto;
+	margin-left: auto;
+	padding-left: 8px;
+	font-size: 12px;
+	color: var(--text-muted);
+}
+
+.m-radio__dot {
+	display: inline-block;
+	flex: 0 0 auto;
+	width: 20px;
+	height: 20px;
+	border-radius: 50%;
+	background: var(--white);
+	box-shadow: inset 0 0 0 1px var(--border-input);
+	transition: box-shadow 0.15s ease;
+}
+
+.m-radio--checked .m-radio__dot {
+	box-shadow:
+		inset 0 0 0 6px var(--brand-strong),
+		inset 0 0 0 20px var(--white);
+}
+
+// Card: a bordered choice with room for a description.
+.m-radio--card {
+	padding: 16px;
+	border-radius: var(--radius-md);
+	background: var(--white);
+	box-shadow: inset 0 0 0 1px var(--border-strong);
+	transition:
+		box-shadow 0.15s ease,
+		background-color 0.15s ease;
+
+	&:hover {
+		box-shadow: inset 0 0 0 1px var(--border-input);
+	}
+
+	.m-radio__label {
+		font-weight: 600;
+	}
+
+	&.m-radio--checked {
+		background: var(--brand-tint);
+		box-shadow: inset 0 0 0 2px var(--brand);
+	}
+}
+
+// -------------------------------------------------------------
+// MSwitch
+// -------------------------------------------------------------
+.m-switch {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	font-family: var(--font-ui);
+	font-size: 14px;
+	color: var(--text-primary);
+	text-align: left;
+	cursor: pointer;
+
+	&__track {
+		position: relative;
+		flex: 0 0 auto;
+		width: 40px;
+		height: 24px;
+		border-radius: var(--radius-full);
+		background: var(--border-input);
+		transition: background-color 0.15s ease;
+	}
+
+	&__thumb {
+		position: absolute;
+		top: 3px;
+		left: 3px;
+		width: 18px;
+		height: 18px;
+		border-radius: 50%;
+		background: var(--white);
+		box-shadow: var(--shadow-sm);
+		transition: transform 0.15s ease;
+	}
+
+	&--on &__track {
+		background: var(--brand-strong);
+	}
+
+	&--on &__thumb {
+		transform: translateX(16px);
+	}
+
+	&--disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+}
+
+// -------------------------------------------------------------
+// MCodeInput — six visual cells over one real input.
+// -------------------------------------------------------------
+.m-code {
+	&__field {
+		position: relative;
+		display: inline-block;
+		max-width: 100%;
+		vertical-align: top;
+	}
+
+	&__input {
+		position: absolute;
+		inset: 0;
+		z-index: 1;
+		width: 100%;
+		height: 100%;
+		border: 0;
+		background: transparent;
+		color: transparent;
+		caret-color: transparent;
+		font-size: 1px;
+		cursor: text;
+
+		&::selection {
+			background: transparent;
+		}
+
+		&:focus-visible {
+			outline: none;
+		}
+	}
+
+	// cells are 48px wide and shrink evenly when the column is narrower
+	&__cells {
+		display: grid;
+		grid-auto-flow: column;
+		grid-auto-columns: minmax(0, 48px);
+		gap: 8px;
+	}
+
+	&__cell {
+		display: grid;
+		place-items: center;
+		height: 56px;
+		border-radius: var(--radius-sm);
+		background: var(--white);
+		box-shadow: inset 0 0 0 1px var(--border-input);
+		font-family: var(--font-display);
+		font-size: 24px;
+		font-weight: 600;
+		color: var(--text-primary);
+		transition: box-shadow 0.15s ease;
+
+		&--filled {
+			box-shadow: inset 0 0 0 1px var(--slate);
+		}
+
+		&--active {
+			box-shadow: inset 0 0 0 2px var(--brand);
+		}
+	}
+
+	&--error &__cell {
+		box-shadow: inset 0 0 0 2px var(--danger);
+	}
+
+	&--disabled {
+		opacity: 0.5;
+	}
+}
+
+// -------------------------------------------------------------
+// MModal — basic / alert / full / custom, driven by useModal().
+// -------------------------------------------------------------
+.m-modal {
+	position: fixed;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 24px;
+
+	&__backdrop {
+		position: absolute;
+		inset: 0;
+		background: var(--overlay);
+	}
+
+	&__dialog {
+		position: relative;
+		display: flex;
+		flex-direction: column;
+		width: 100%;
+		min-height: 0;
+		max-height: calc(100vh - 48px);
+		overflow: hidden;
+		border-radius: var(--radius-md);
+		background: var(--white);
+		box-shadow: var(--shadow-pop);
+		animation: m-modal-in 0.18s ease-out;
+
+		&:focus-visible {
+			outline: none;
+		}
+	}
+
+	&__header {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 16px;
+		padding: 20px 24px 16px;
+		border-bottom: var(--rule);
+	}
+
+	&__title {
+		padding-top: 4px;
+	}
+
+	&__close {
+		flex: 0 0 auto;
+		margin: -2px -8px 0 0;
+	}
+
+	&__content {
+		flex: 1 1 auto;
+		padding: 24px;
+		overflow-y: auto;
+	}
+
+	&__footer {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: flex-end;
+		gap: 12px;
+		padding: 16px 24px;
+		border-top: var(--rule);
+		background: var(--canvas);
+	}
+
+	// --- Alert --------------------------------------------------
+	&__alert {
+		position: relative;
+		display: flex;
+		gap: 16px;
+		padding: 24px 56px 24px 24px;
+	}
+
+	&__alert-icon {
+		display: grid;
+		place-items: center;
+		flex: 0 0 auto;
+		width: 44px;
+		height: 44px;
+		border-radius: 50%;
+
+		&--brand {
+			background: var(--brand-soft);
+			color: var(--brand-deep);
+		}
+
+		&--warning {
+			background: var(--warning-soft);
+			color: var(--warning);
+		}
+
+		&--danger {
+			background: var(--danger-soft);
+			color: var(--danger);
+		}
+
+		&--success {
+			background: var(--success-soft);
+			color: var(--success);
+		}
+	}
+
+	&__alert-body {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		padding-top: 2px;
+	}
+
+	&__alert .m-modal__close {
+		position: absolute;
+		top: 12px;
+		right: 12px;
+		margin: 0;
+	}
+
+	// --- Full ---------------------------------------------------
+	&--full {
+		padding: 0;
+
+		.m-modal__dialog {
+			width: 100vw;
+			height: 100vh;
+			max-height: none;
+			border-radius: 0;
+		}
+	}
+}
+
+@keyframes m-modal-in {
+	from {
+		opacity: 0;
+		transform: translateY(8px);
+	}
+
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+// -------------------------------------------------------------
+// MDrawer — side sheet for mobile navigation and filters.
+// -------------------------------------------------------------
+.m-drawer {
+	position: fixed;
+	inset: 0;
+	display: flex;
+
+	&--right {
+		justify-content: flex-end;
+	}
+
+	&--left {
+		justify-content: flex-start;
+	}
+
+	&__backdrop {
+		position: absolute;
+		inset: 0;
+		background: var(--overlay);
+	}
+
+	&__panel {
+		position: relative;
+		display: flex;
+		flex-direction: column;
+		height: 100%;
+		background: var(--white);
+		box-shadow: var(--shadow-pop);
+
+		&:focus-visible {
+			outline: none;
+		}
+	}
+
+	&--right &__panel {
+		animation: m-drawer-right 0.2s ease-out;
+	}
+
+	&--left &__panel {
+		animation: m-drawer-left 0.2s ease-out;
+	}
+
+	&__header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		padding: 16px 16px 16px 24px;
+		border-bottom: var(--rule);
+	}
+
+	&__content {
+		flex: 1 1 auto;
+		overflow-y: auto;
+		padding: 24px;
+	}
+
+	&__footer {
+		display: flex;
+		gap: 12px;
+		padding: 16px 24px;
+		border-top: var(--rule);
+	}
+}
+
+@keyframes m-drawer-right {
+	from {
+		transform: translateX(24px);
+		opacity: 0;
+	}
+}
+
+@keyframes m-drawer-left {
+	from {
+		transform: translateX(-24px);
+		opacity: 0;
+	}
+}
+
+// -------------------------------------------------------------
+// MDropdown — menu button.
+// -------------------------------------------------------------
+.m-dropdown {
+	position: relative;
+	display: inline-flex;
+
+	&__trigger {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		height: 40px;
+		padding: 0 12px;
+		border-radius: var(--radius-sm);
+		font-family: var(--font-ui);
+		font-size: 14px;
+		font-weight: 500;
+		color: var(--text-primary);
+		cursor: pointer;
+		transition:
+			background-color 0.15s ease,
+			box-shadow 0.15s ease;
+
+		&--neutral {
+			height: 44px;
+			background: var(--white);
+			box-shadow: inset 0 0 0 1px var(--border-strong);
+			font-weight: 600;
+
+			&:hover {
+				box-shadow: inset 0 0 0 1px var(--border-input);
+			}
+		}
+
+		&--ghost {
+			background: transparent;
+
+			&:hover {
+				background: var(--surface-muted);
+			}
+		}
+
+		&--open .m-dropdown__caret {
+			transform: rotate(180deg);
+		}
+	}
+
+	&__caret {
+		color: var(--text-muted);
+		transition: transform 0.15s ease;
+	}
+
+	&__menu {
+		position: absolute;
+		top: calc(100% + 6px);
+		z-index: 50;
+		display: flex;
+		flex-direction: column;
+		min-width: 220px;
+		padding: 6px;
+		border-radius: var(--radius-sm);
+		background: var(--white);
+		box-shadow:
+			0 0 0 1px var(--border),
+			var(--shadow-pop);
+	}
+
+	&--right &__menu {
+		right: 0;
+	}
+
+	&--left &__menu {
+		left: 0;
+	}
+
+	&__item {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		width: 100%;
+		min-height: 40px;
+		padding: 8px 12px;
+		border-radius: var(--radius-xs);
+		font-family: var(--font-ui);
+		font-size: 14px;
+		color: var(--text-primary);
+		text-align: left;
+		cursor: pointer;
+
+		.m-icon {
+			color: var(--text-muted);
+		}
+
+		&:hover,
+		&:focus-visible {
+			background: var(--surface-muted);
+			outline: none;
+		}
+
+		&:disabled {
+			opacity: 0.5;
+			cursor: not-allowed;
+		}
+
+		&--danger,
+		&--danger .m-icon {
+			color: var(--danger);
+		}
+	}
+
+	&__divider {
+		height: 1px;
+		margin: 6px -6px;
+		background: var(--border);
+	}
+}
+
+// -------------------------------------------------------------
+// MTabs — in-page tab panels.
+// -------------------------------------------------------------
+.m-tabs {
+	display: flex;
+	overflow-x: auto;
+	scrollbar-width: none;
+
+	&::-webkit-scrollbar {
+		display: none;
+	}
+
+	&__tab {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		flex: 0 0 auto;
+		padding: 0 6px;
+		font-family: var(--font-ui);
+		font-size: 14px;
+		font-weight: 500;
+		color: var(--text-secondary);
+		white-space: nowrap;
+		cursor: pointer;
+		transition:
+			color 0.15s ease,
+			background-color 0.15s ease,
+			box-shadow 0.15s ease;
+
+		&:hover {
+			color: var(--text-primary);
+		}
+
+		&:focus-visible {
+			outline-offset: -2px;
+		}
+	}
+
+	&__count {
+		min-width: 22px;
+		padding: 1px 7px;
+		border-radius: var(--radius-xs);
+		background: var(--surface-muted);
+		font-size: 12px;
+		font-weight: 600;
+		line-height: 18px;
+		text-align: center;
+		color: var(--text-secondary);
+	}
+
+	// --- Underline ----------------------------------------------
+	&--underline {
+		gap: 24px;
+		border-bottom: var(--rule);
+
+		.m-tabs__tab {
+			height: 44px;
+			margin-bottom: -1px;
+			box-shadow: inset 0 -2px 0 transparent;
+		}
+
+		.m-tabs__tab--active {
+			color: var(--text-primary);
+			box-shadow: inset 0 -2px 0 var(--brand);
+
+			.m-tabs__count {
+				background: var(--brand-soft);
+				color: var(--brand-deep);
+			}
+		}
+	}
+
+	// --- Segmented ----------------------------------------------
+	&--segmented {
+		display: inline-flex;
+		gap: 4px;
+		padding: 4px;
+		border-radius: var(--radius-sm);
+		background: var(--surface-muted);
+
+		.m-tabs__tab {
+			height: 36px;
+			padding: 0 14px;
+			border-radius: var(--radius-xs);
+		}
+
+		.m-tabs__tab--active {
+			background: var(--white);
+			color: var(--text-primary);
+			box-shadow: var(--shadow-sm);
+		}
+	}
+}
+
+// -------------------------------------------------------------
+// MBadge — status marker. Always words or an icon, never color alone.
+// -------------------------------------------------------------
+.m-badge {
+	--badge-bg: var(--surface-muted);
+	--badge-fg: var(--text-secondary);
+
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	flex: 0 0 auto;
+	border-radius: var(--radius-xs);
+	background: var(--badge-bg);
+	color: var(--badge-fg);
+	font-family: var(--font-ui);
+	font-weight: 600;
+	line-height: 1;
+	white-space: nowrap;
+
+	&--md {
+		height: 26px;
+		padding: 0 9px;
+		font-size: 12px;
+	}
+
+	&--sm {
+		height: 22px;
+		padding: 0 7px;
+		font-size: 11px;
+	}
+
+	&--brand {
+		--badge-bg: var(--brand-soft);
+		--badge-fg: var(--brand-deep);
+	}
+
+	&--slate {
+		--badge-bg: var(--slate-soft);
+		--badge-fg: var(--slate);
+	}
+
+	&--success {
+		--badge-bg: var(--success-soft);
+		--badge-fg: var(--success);
+	}
+
+	&--warning {
+		--badge-bg: var(--warning-soft);
+		--badge-fg: var(--warning);
+	}
+
+	&--danger {
+		--badge-bg: var(--danger-soft);
+		--badge-fg: var(--danger);
+	}
+
+	&--outline {
+		background: transparent;
+		box-shadow: inset 0 0 0 1px currentColor;
+	}
+}
+
+// -------------------------------------------------------------
+// MTag — taxonomy tags and removable filter chips.
+// -------------------------------------------------------------
+.m-tag {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	max-width: 100%;
+	border-radius: var(--radius-xs);
+	background: var(--surface-muted);
+	color: var(--text-secondary);
+	font-family: var(--font-ui);
+	font-weight: 500;
+	line-height: 1.2;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	overflow: hidden;
+	transition:
+		background-color 0.15s ease,
+		color 0.15s ease;
+
+	&--md {
+		min-height: 30px;
+		padding: 5px 10px;
+		font-size: 13px;
+	}
+
+	&--sm {
+		min-height: 24px;
+		padding: 3px 8px;
+		font-size: 12px;
+	}
+
+	&--brand {
+		background: var(--brand-soft);
+		color: var(--brand-deep);
+	}
+
+	&--outline {
+		background: var(--white);
+		box-shadow: inset 0 0 0 1px var(--border-strong);
+		color: var(--text-primary);
+	}
+
+	&--link:hover {
+		background: var(--brand-soft);
+		color: var(--brand-deep);
+	}
+
+	&--removable {
+		cursor: pointer;
+
+		&:hover {
+			background: var(--brand-deep);
+			color: var(--white);
+		}
+	}
+
+	&__remove {
+		margin-right: -2px;
+		opacity: 0.8;
+	}
+}
+
+// -------------------------------------------------------------
+// MAvatar — photo, or initials until one is uploaded.
+// -------------------------------------------------------------
+.m-avatar {
+	position: relative;
+	display: inline-grid;
+	place-items: center;
+	flex: 0 0 auto;
+	overflow: hidden;
+	background: var(--brand-soft);
+	color: var(--brand-deep);
+
+	&--circle {
+		border-radius: 50%;
+	}
+
+	&--rounded {
+		border-radius: 22%;
+	}
+
+	&__img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+	}
+
+	&__initials {
+		font-family: var(--font-display);
+		font-weight: 600;
+		line-height: 1;
+		letter-spacing: 0.02em;
+	}
+}
+
+// -------------------------------------------------------------
+// MLogo — company logo, or a monogram tile.
+// -------------------------------------------------------------
+.m-logo {
+	display: inline-grid;
+	place-items: center;
+	flex: 0 0 auto;
+	overflow: hidden;
+	border-radius: 22%;
+	color: var(--white);
+
+	&--slate {
+		background: var(--slate);
+	}
+
+	&--brand {
+		background: var(--brand-strong);
+	}
+
+	&--deep {
+		background: var(--brand-deep);
+	}
+
+	&--ink {
+		background: var(--ink);
+	}
+
+	&--image {
+		background: var(--white);
+		box-shadow: inset 0 0 0 1px var(--border);
+	}
+
+	&__img {
+		width: 100%;
+		height: 100%;
+		object-fit: contain;
+	}
+
+	&__mark {
+		font-family: var(--font-display);
+		font-weight: 700;
+		line-height: 1;
+		letter-spacing: 0.02em;
+	}
+}
+
+// -------------------------------------------------------------
+// MAlert — inline notices and form results.
+// -------------------------------------------------------------
+.m-alert {
+	--alert-bg: var(--brand-tint);
+	--alert-rule: var(--brand-soft);
+	--alert-fg: var(--brand-deep);
+
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	padding: 14px 16px;
+	border-radius: var(--radius-sm);
+	background: var(--alert-bg);
+	box-shadow: inset 0 0 0 1px var(--alert-rule);
+	font-family: var(--font-base);
+	font-size: 15px;
+	line-height: 23px;
+	color: var(--text-primary);
+
+	&__icon {
+		margin-top: 3px;
+		color: var(--alert-fg);
+	}
+
+	&__body {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		flex: 1 1 auto;
+		min-width: 0;
+	}
+
+	&__title {
+		font-family: var(--font-ui);
+		font-size: 14px;
+		font-weight: 600;
+		line-height: 22px;
+		color: var(--text-primary);
+	}
+
+	&__text {
+		color: var(--text-secondary);
+	}
+
+	&__actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px 16px;
+		margin-top: 10px;
+	}
+
+	&__dismiss {
+		margin: -4px -6px -4px 0;
+	}
+
+	&--success {
+		--alert-bg: var(--success-soft);
+		--alert-rule: var(--success-soft);
+		--alert-fg: var(--success);
+	}
+
+	&--warning {
+		--alert-bg: var(--warning-soft);
+		--alert-rule: var(--warning-soft);
+		--alert-fg: var(--warning);
+	}
+
+	&--danger {
+		--alert-bg: var(--danger-soft);
+		--alert-rule: var(--danger-soft);
+		--alert-fg: var(--danger);
+	}
+
+	&--neutral {
+		--alert-bg: var(--canvas);
+		--alert-rule: var(--border);
+		--alert-fg: var(--text-secondary);
+	}
+}
+
+// -------------------------------------------------------------
+// MEmptyState — no results, failed search, empty profile.
+// -------------------------------------------------------------
+.m-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 8px;
+	text-align: center;
+
+	&--boxed {
+		padding: 56px 24px;
+		border-radius: var(--radius-md);
+		background: var(--canvas);
+	}
+
+	&--plain {
+		padding: 32px 16px;
+	}
+
+	&__icon {
+		display: grid;
+		place-items: center;
+		width: 56px;
+		height: 56px;
+		margin-bottom: 8px;
+		border-radius: 50%;
+		background: var(--white);
+		box-shadow: inset 0 0 0 1px var(--border);
+		color: var(--text-muted);
+	}
+
+	&--danger &__icon {
+		background: var(--danger-soft);
+		box-shadow: none;
+		color: var(--danger);
+	}
+
+	&__text {
+		max-width: 440px;
+	}
+
+	&__actions {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: 12px;
+		margin-top: 12px;
+	}
+}
+
+// -------------------------------------------------------------
+// MBreadcrumbs
+// -------------------------------------------------------------
+.m-breadcrumbs {
+	&__list {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 4px 0;
+	}
+
+	&__item {
+		display: inline-flex;
+		align-items: center;
+		font-family: var(--font-ui);
+		font-size: 13px;
+		line-height: 20px;
+	}
+
+	&__link {
+		color: var(--text-secondary);
+
+		&:hover {
+			color: var(--brand-strong);
+			text-decoration: underline;
+			text-underline-offset: 3px;
+		}
+	}
+
+	&__current {
+		color: var(--text-muted);
+	}
+
+	&__separator {
+		margin: 0 6px;
+		color: var(--text-muted);
+	}
+
+	&--inverse {
+		.m-breadcrumbs__link {
+			color: var(--on-dark-muted);
+
+			&:hover {
+				color: var(--white);
+			}
+		}
+
+		.m-breadcrumbs__current,
+		.m-breadcrumbs__separator {
+			color: var(--on-dark-subtle);
+		}
+	}
+}
+
+// Phones: underline tabs wrap onto a second line rather than hiding
+// behind a scroll with no cue; segmented tabs share the width equally.
+@media only screen and (max-width: 600px) {
+	.m-tabs {
+		&--underline {
+			flex-wrap: wrap;
+			column-gap: 16px;
+		}
+
+		&--segmented {
+			display: flex;
+			width: 100%;
+
+			.m-tabs__tab {
+				flex: 1 1 0;
+				justify-content: center;
+				min-width: 0;
+				height: auto;
+				min-height: 36px;
+				padding: 6px 8px;
+				line-height: 18px;
+				text-align: center;
+				white-space: normal;
+			}
+		}
+	}
+}
+
+// -------------------------------------------------------------
+// MPagination
+// -------------------------------------------------------------
+.m-pagination {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+
+	&__pages {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
+
+	&__step,
+	&__page {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+		height: 40px;
+		border-radius: var(--radius-sm);
+		font-family: var(--font-ui);
+		font-size: 14px;
+		font-weight: 500;
+		color: var(--text-primary);
+		cursor: pointer;
+		transition:
+			background-color 0.15s ease,
+			color 0.15s ease;
+
+		&:hover {
+			background: var(--surface-muted);
+		}
+	}
+
+	&__step {
+		padding: 0 12px;
+
+		&--disabled {
+			color: var(--text-muted);
+			pointer-events: none;
+		}
+	}
+
+	&__page {
+		min-width: 40px;
+		padding: 0 8px;
+
+		&--active,
+		&--active:hover {
+			background: var(--slate);
+			color: var(--white);
+		}
+	}
+
+	&__gap {
+		display: inline-block;
+		min-width: 24px;
+		text-align: center;
+		color: var(--text-muted);
+	}
+
+	// phones show "Page 3 of 12" between the steps instead of every page
+	&__summary {
+		display: none;
+		font-family: var(--font-ui);
+		font-size: 14px;
+		color: var(--text-secondary);
+		white-space: nowrap;
+	}
+}
+
+@media only screen and (max-width: 600px) {
+	.m-pagination {
+		justify-content: space-between;
+
+		&__pages {
+			display: none;
+		}
+
+		&__summary {
+			display: inline;
+		}
+	}
+}
+
+// -------------------------------------------------------------
+// MTable
+// -------------------------------------------------------------
+.m-table {
+	width: 100%;
+	border: var(--rule);
+	border-radius: var(--radius-md);
+	background: var(--white);
+	overflow: hidden;
+
+	// positioned, so absolutely placed children (sr-only labels) scroll
+	// with the table instead of widening the page
+	&__scroll {
+		position: relative;
+		overflow-x: auto;
+	}
+
+	&__table {
+		width: 100%;
+		min-width: 640px;
+		border-collapse: collapse;
+		font-family: var(--font-ui);
+		font-size: 14px;
+		color: var(--text-primary);
+	}
+
+	thead th {
+		padding: 12px 16px;
+		border-bottom: var(--rule);
+		background: var(--canvas);
+		font-size: 12px;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--text-muted);
+		white-space: nowrap;
+	}
+
+	&__row {
+		transition: background-color 0.15s ease;
+
+		&:hover {
+			background: var(--brand-tint);
+		}
+
+		&:not(:last-child) td {
+			border-bottom: var(--rule);
+		}
+
+		&--muted {
+			color: var(--text-muted);
+		}
+	}
+
+	td {
+		padding: 14px 16px;
+		vertical-align: middle;
+	}
+
+	&--dense td {
+		padding: 10px 16px;
+	}
+
+	&__cell {
+		&--left {
+			text-align: left;
+		}
+
+		&--center {
+			text-align: center;
+		}
+
+		&--right {
+			text-align: right;
+		}
+	}
+
+	&__empty {
+		padding: 40px 24px;
+		font-family: var(--font-base);
+		font-size: 16px;
+		text-align: center;
+		color: var(--text-secondary);
+	}
+}
+
+@media only screen and (max-width: 1024px) {
+	.m-table__cell--hide-lg {
+		display: none;
+	}
+}
+
+@media only screen and (max-width: 768px) {
+	.m-table__cell--hide-md {
+		display: none;
+	}
+}
+
+@media only screen and (max-width: 600px) {
+	.m-table {
+		thead th,
+		td {
+			padding-inline: 10px;
+		}
+	}
+}
+
+// -------------------------------------------------------------
+// MProgress — completeness and other 0–100 measures.
+// -------------------------------------------------------------
+.m-progress {
+	--progress-fill: var(--brand);
+
+	width: 100%;
+
+	&__head {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 12px;
+		margin-bottom: 8px;
+		font-family: var(--font-ui);
+		font-size: 13px;
+		color: var(--text-secondary);
+	}
+
+	&__value {
+		font-weight: 600;
+		color: var(--text-primary);
+	}
+
+	&__track {
+		position: relative;
+		height: 8px;
+		border-radius: var(--radius-full);
+		background: var(--surface-muted);
+	}
+
+	&--sm &__track {
+		height: 6px;
+	}
+
+	&__bar {
+		display: block;
+		height: 100%;
+		border-radius: inherit;
+		background: var(--progress-fill);
+		transition: width 0.3s ease;
+	}
+
+	&__threshold {
+		position: absolute;
+		top: -3px;
+		bottom: -3px;
+		width: 2px;
+		border-radius: 1px;
+		background: var(--slate);
+	}
+
+	&--success {
+		--progress-fill: var(--success);
+	}
+
+	&--warning {
+		--progress-fill: var(--warning);
+	}
+}
+
+// -------------------------------------------------------------
+// MStat — one figure with its label.
+// -------------------------------------------------------------
+.m-stat {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 20px;
+	border-radius: var(--radius-md);
+	background: var(--white);
+	box-shadow: inset 0 0 0 1px var(--border);
+
+	&__head {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 12px;
+	}
+
+	&__label {
+		font-family: var(--font-ui);
+		font-size: 13px;
+		font-weight: 500;
+		line-height: 20px;
+		color: var(--text-secondary);
+	}
+
+	&__icon {
+		display: grid;
+		place-items: center;
+		flex: 0 0 auto;
+		width: 32px;
+		height: 32px;
+		border-radius: var(--radius-sm);
+		background: var(--surface-muted);
+		color: var(--text-secondary);
+	}
+
+	&__value {
+		font-family: var(--font-display);
+		font-size: 30px;
+		font-weight: 600;
+		line-height: 38px;
+		letter-spacing: -0.01em;
+		color: var(--text-primary);
+		font-variant-numeric: tabular-nums;
+	}
+
+	&__hint {
+		font-family: var(--font-base);
+		font-size: 14px;
+		line-height: 20px;
+		color: var(--text-muted);
+	}
+
+	&--brand &__icon {
+		background: var(--brand-soft);
+		color: var(--brand-deep);
+	}
+
+	&--slate {
+		background: var(--slate);
+		box-shadow: none;
+
+		.m-stat__label,
+		.m-stat__hint {
+			color: var(--on-dark-muted);
+		}
+
+		.m-stat__value {
+			color: var(--white);
+		}
+
+		.m-stat__icon {
+			background: var(--on-dark-hover);
+			color: var(--white);
+		}
+	}
+}
+
+// -------------------------------------------------------------
+// MPage — dashboard and admin page shell.
+// -------------------------------------------------------------
+.m-page {
+	display: flex;
+	flex-direction: column;
+	gap: 24px;
+	width: 100%;
+
+	&__head {
+		display: flex;
+		align-items: flex-end;
+		justify-content: space-between;
+		gap: 16px 24px;
+		flex-wrap: wrap;
+	}
+
+	&__head-text {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		max-width: 720px;
+	}
+
+	&__back {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		align-self: flex-start;
+		font-family: var(--font-ui);
+		font-size: 13px;
+		font-weight: 500;
+		color: var(--text-secondary);
+
+		&:hover {
+			color: var(--brand-strong);
+		}
+	}
+
+	&__description {
+		font-size: 16px;
+		line-height: 25px;
+		color: var(--text-secondary);
+	}
+
+	&__actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+}

@@ -1,0 +1,50 @@
+// =============================================================
+// LAYOUT
+// Built around the shared `block > .wrapper > .block__con` shell:
+// the block is the full-bleed band, .wrapper constrains and centers
+// the width, and the inner `__con` holds the content and its padding.
+// Section spacing lives in each component's `__con` padding.
+// =============================================================
+
+// Width-constraint shell. Centers content and provides the page gutter.
+.wrapper {
+	width: 100%;
+	max-width: 1200px;
+	margin: 0 auto;
+	padding: 0 24px;
+}
+
+// --- Flex helpers ---------------------------------------------
+
+.flex {
+	display: flex;
+}
+
+.flex-col {
+	display: flex;
+	flex-direction: column;
+}
+
+.items-center {
+	align-items: center;
+}
+
+.justify-center {
+	justify-content: center;
+}
+
+.justify-between {
+	justify-content: space-between;
+}
+
+.flex-wrap {
+	flex-wrap: wrap;
+}
+
+// --- Responsive gutter ----------------------------------------
+
+@media only screen and (max-width: 1024px) {
+	.wrapper {
+		padding: 0 16px;
+	}
+}

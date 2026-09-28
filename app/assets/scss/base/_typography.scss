@@ -1,0 +1,204 @@
+// =============================================================
+// TYPOGRAPHY
+// Heading scale from the brand guide (PDF p. 28), then text
+// utilities. Desktop sizes step down on tablet and phone while the
+// semantic heading order stays intact (docs/SETUP.md §5).
+//
+//   H1 48 Bold · H2 36 Semi-bold · H3 28 Semi-bold
+//   H4 22 Medium · H5 18 Medium · H6 14 Regular
+//
+// .heading-N utilities apply a level's size and weight to any
+// element, so a card title can look like an H4 and stay an h3.
+// =============================================================
+
+h1,
+.heading-1 {
+	font-size: 48px;
+	line-height: 56px;
+	font-weight: 700;
+	letter-spacing: -0.02em;
+}
+
+h2,
+.heading-2 {
+	font-size: 36px;
+	line-height: 44px;
+	font-weight: 600;
+	letter-spacing: -0.015em;
+}
+
+h3,
+.heading-3 {
+	font-size: 28px;
+	line-height: 36px;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+}
+
+h4,
+.heading-4 {
+	font-size: 22px;
+	line-height: 30px;
+	font-weight: 500;
+	letter-spacing: -0.005em;
+}
+
+h5,
+.heading-5 {
+	font-size: 18px;
+	line-height: 26px;
+	font-weight: 500;
+}
+
+h6,
+.heading-6 {
+	font-size: 14px;
+	line-height: 20px;
+	font-weight: 400;
+}
+
+// Calibri runs small for its size, so reading copy sits a step up.
+p {
+	font-size: 17px;
+	line-height: 28px;
+}
+
+// --- Size utilities -------------------------------------------
+
+.text-xlarge {
+	font-size: 20px;
+	line-height: 32px;
+}
+
+.text-large {
+	font-size: 18px;
+	line-height: 29px;
+}
+
+.text-medium {
+	font-size: 16px;
+	line-height: 26px;
+}
+
+.text-small {
+	font-size: 14px;
+	line-height: 22px;
+}
+
+.text-xsmall {
+	font-size: 12px;
+	line-height: 18px;
+}
+
+// --- Weight utilities -----------------------------------------
+
+.font-thin {
+	font-weight: 100;
+}
+
+.font-extra-light {
+	font-weight: 200;
+}
+
+.font-light {
+	font-weight: 300;
+}
+
+.font-regular {
+	font-weight: 400;
+}
+
+.font-medium {
+	font-weight: 500;
+}
+
+.font-semi-bold {
+	font-weight: 600;
+}
+
+.font-bold {
+	font-weight: 700;
+}
+
+// --- Alignment utilities --------------------------------------
+
+.text-left {
+	text-align: left;
+}
+
+.text-center {
+	text-align: center;
+}
+
+.text-right {
+	text-align: right;
+}
+
+.text-muted {
+	color: var(--text-muted);
+}
+
+// --- Responsive down-scale ------------------------------------
+
+@media only screen and (max-width: 1024px) {
+	h1,
+	.heading-1 {
+		font-size: 40px;
+		line-height: 48px;
+	}
+
+	h2,
+	.heading-2 {
+		font-size: 30px;
+		line-height: 38px;
+	}
+
+	h3,
+	.heading-3 {
+		font-size: 24px;
+		line-height: 32px;
+	}
+
+	h4,
+	.heading-4 {
+		font-size: 20px;
+		line-height: 28px;
+	}
+
+	h5,
+	.heading-5 {
+		font-size: 17px;
+		line-height: 24px;
+	}
+}
+
+@media only screen and (max-width: 600px) {
+	h1,
+	.heading-1 {
+		font-size: 32px;
+		line-height: 40px;
+	}
+
+	h2,
+	.heading-2 {
+		font-size: 26px;
+		line-height: 34px;
+	}
+
+	h3,
+	.heading-3 {
+		font-size: 22px;
+		line-height: 30px;
+	}
+
+	h4,
+	.heading-4 {
+		font-size: 19px;
+		line-height: 26px;
+	}
+
+	p {
+		font-size: 16px;
+		line-height: 26px;
+	}
+}

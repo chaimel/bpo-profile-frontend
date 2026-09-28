@@ -1,0 +1,75 @@
+// =============================================================
+// COLORS
+// BPO Profile palette (PDF p. 26): BPO Blue for action, Slate for
+// navigation and dark sections, Black for text — on a restrained,
+// neutral surface system. Color is used deliberately, not everywhere.
+//
+// Contrast rules (WCAG AA, PDF p. 38):
+//   --brand        #2389C2 is 3.9:1 on white. Use it for icons, focus
+//                  rings, active marks, fills without small text, and
+//                  display text 24px and up — never for body-size text.
+//   --brand-strong carries small text: links, and white labels on
+//                  primary buttons (5.0:1 on white, 4.6:1 on canvas).
+//   --brand-deep   is the text color on --brand-soft (6.5:1).
+//
+// Single source of truth: edit the $colors map and the matching CSS
+// custom properties are generated into :root automatically.
+// =============================================================
+
+$colors: (
+	// --- Brand: BPO Blue ---------------------------------------
+	"brand": #2389c2,
+	"brand-strong": #1d76aa,
+	"brand-deep": #155b85,
+	"brand-soft": #e9f3fa,
+	"brand-tint": #f4f9fd,
+
+	// --- Slate -------------------------------------------------
+	"slate": #394454,            // navigation, secondary buttons, dark bands
+	"slate-deep": #2b3441,       // hover on slate, footer base line
+	"slate-soft": #eef0f3,
+
+	// --- Ink ---------------------------------------------------
+	"ink": #1e1e1e,              // headings and primary text
+
+	// --- Surfaces ----------------------------------------------
+	"white": #ffffff,
+	"canvas": #f6f7f9,           // alternate bands, dashboard page
+	"surface-muted": #eef1f4,    // recessed fields, hover wells
+
+	// --- Rules -------------------------------------------------
+	"border": #e1e5ea,
+	"border-strong": #c9d0d8,
+	"border-input": #8a94a3,     // field outlines: 3.1:1 so controls stay identifiable
+
+	// --- Text --------------------------------------------------
+	"text-primary": #1e1e1e,
+	"text-secondary": #515c6c,   // 6.8:1 on white
+	"text-muted": #667080,       // 4.7:1 on canvas — the floor for small text
+	"text-inverse": #ffffff,
+
+	// --- On dark (slate / ink bands) ---------------------------
+	"on-dark-muted": rgba(255, 255, 255, 0.76),
+	"on-dark-subtle": rgba(255, 255, 255, 0.56),
+	"on-dark-rule": rgba(255, 255, 255, 0.14),
+	"on-dark-hover": rgba(255, 255, 255, 0.08),
+
+	// --- Status (always paired with an icon or a word) ---------
+	"success": #17693f,
+	"success-soft": #e8f5ee,
+	"warning": #8a5a00,
+	"warning-soft": #fdf3e1,
+	"danger": #b42318,
+	"danger-soft": #fdecea,
+
+	// --- Overlays ----------------------------------------------
+	"overlay": rgba(30, 30, 30, 0.48),
+	"header-glass": rgba(255, 255, 255, 0.94),
+);
+
+// Generate CSS variables in :root.
+:root {
+	@each $name, $value in $colors {
+		--#{$name}: #{$value};
+	}
+}

@@ -12,6 +12,7 @@ This model covers the directory foundation and the verification/claim workflows 
 
 ```
 users
+  ├── social_accounts (Google identity bindings)
   ├── company_users (role at a company)
   │     └── companies
   │           ├── company_locations → locations
@@ -35,7 +36,9 @@ company_claims ← companies / users
 claim_tokens ← company_claims
 team_invitations ← companies / professionals / users
 profile_events (analytics)
-login_challenges ← users (pending password/code login)
+login_challenges ← users / social_accounts (pending password-or-Google + email-code login)
+sessions ← users (live Laravel browser sessions)
+oauth_* (Passport infrastructure; external OAuth disabled in Phase 1)
 ```
 
 ---
@@ -44,6 +47,7 @@ login_challenges ← users (pending password/code login)
 
 | From | To | Type | Rule |
 | --- | --- | --- | --- |
+| User | Social account | one-to-many | At most one identity per provider per user; a provider subject belongs to exactly one user |
 | User | Company | many-to-many via `company_users` | A user may manage multiple companies; only accepted memberships grant access; a user still has at most one professional profile |
 | Company | Professional | one-to-many | A professional belongs to exactly one company |
 | Professional | User | optional one-to-one | Unclaimed roster rows have `user_id = null` |
@@ -79,7 +83,7 @@ login_challenges ← users (pending password/code login)
 
 A sales professional who also runs the listing is `owner` or `admin` on `company_users` **and** has a `professionals` row linked to the same user.
 
-Every protected request requires a non-deleted, email-verified user and a session with the current `auth_version`. Company permissions additionally require a non-deleted company and an accepted membership with the required role. Own-professional access requires a matching `user_id` and non-deleted profile/company. Editing an approved affiliation requires accepted membership in that company. Own-professional inbox and statistics access require both approved affiliation and accepted membership. Without membership, the linked user may edit only a private profile with `status = draft` and `affiliation_status IN (pending, rejected)`; this exception grants no publication, inbox, or statistics access. Independent accepted owner/admin permissions remain valid through company-scoped routes. Restoring a user or company does not turn a retained `professionals.user_id` link into permission to edit an approved or published profile.
+Every protected browser API request requires Passport cookie authentication and a live Laravel server session for the same non-deleted, email-verified user with the current `auth_version`; Passport cookie validation alone grants no access. Company permissions additionally require a non-deleted company and an accepted membership with the required role. Own-professional access requires a matching `user_id` and non-deleted profile/company. Editing an approved affiliation requires accepted membership in that company. Own-professional inbox and statistics access require both approved affiliation and accepted membership. Without membership, the linked user may edit only a private profile with `status = draft` and `affiliation_status IN (pending, rejected)`; this exception grants no publication, inbox, or statistics access. Independent accepted owner/admin permissions remain valid through company-scoped routes. Restoring a user or company does not turn a retained `professionals.user_id` link into permission to edit an approved or published profile.
 
 Own-profile writes cannot change `company_id`, affiliation review fields, verification, or premium placement. Only platform admins set `published` or `suspended`; a professional with approved affiliation, verified email, and accepted membership may submit `pending_review` or return to `draft`, without overriding an admin suspension.
 
@@ -95,11 +99,11 @@ Buyers have no rows in `users` at launch.
 | --- | --- | --- |
 | id | bigint PK | |
 | platform_role | varchar(32) | `user`, `admin` |
-| first_name | varchar(100) | |
-| last_name | varchar(100) | |
-| email | varchar(255) | unique |
+| first_name | varchar(100) | nullable only while an account-only Google user awaits name completion |
+| last_name | varchar(100) | nullable only while an account-only Google user awaits name completion |
+| email | varchar(255) | unique; normalize consistently across registration, Google onboarding, and invitations |
 | email_verified_at | timestamptz | nullable |
-| password | varchar(255) | Laravel-supported password hash; never plaintext |
+| password | varchar(255) | nullable for Google-only accounts; otherwise Laravel-supported password hash, never plaintext |
 | auth_version | bigint | default 0; monotonically incremented for session/challenge revocation |
 | remember_token | varchar(100) | nullable; persistent remember-me disabled in Phase 1 |
 | last_login_at | timestamptz | nullable |
@@ -109,7 +113,9 @@ Buyers have no rows in `users` at launch.
 
 Indexes: unique `email`, index `platform_role`.
 
-Phase 1 SPA authentication uses server-side cookie sessions after both password and email code succeed. Registration leaves `email_verified_at = NULL`; first successful code verification sets it. Sanctum's `personal_access_tokens` table may be installed by the framework, but token issuance is not part of this first-party login flow. Public payloads never expose password hashes, `auth_version`, or challenge secrets.
+Phase 1 SPA authentication uses Passport's encrypted JWT `laravel_token` cookie together with a live Laravel database session; both authentication cookies are `HttpOnly`. A password or a linked Google identity starts the same pending email-code challenge. Requiring the emailed code on every fresh login is the current proposed implementation default for all account types, pending confirmation before implementation; neither the PDF nor the user's email-verification request specifies that frequency. Registration leaves `email_verified_at = NULL`; first successful code verification sets it, including for a Google-provided verified email. Google sign-in never assigns platform-admin privileges. Public payloads never expose password hashes, `auth_version`, or challenge secrets.
+
+Password registration still requires first name, last name, and password. A newly created Google account may have missing names and no password, but cannot create a company or professional through onboarding until both names are supplied. A Google-only user may set a local password through the existing password-reset flow; this revokes prior authentication and requires a fresh completed login. The unique email constraint includes soft-deleted users, so Google sign-in cannot recreate or automatically merge an existing account by email.
 
 ### 4.2 `plans`
 
@@ -193,7 +199,7 @@ Unique `(company_id, user_id)`. Index `user_id`.
 
 Rows created by affiliation approval, invitation acceptance, company registration, or claim acceptance set `accepted_at` in the same transaction. Invitations live in `team_invitations`; they do not confer membership before acceptance. Company registration creates the initial accepted owner and sets `companies.claimed_at`. Claim acceptance takes the shared locks below and refuses any company with `claimed_at` already set or an existing accepted owner.
 
-Access-changing transactions use one lock order: required existing actor/recipient `users`, `companies`, `professionals`, `company_users`, `company_claims`, `claim_tokens`, then `team_invitations`; sort multiple rows within each table by ID and skip unrelated tables. This covers claims, invitation creation/reissue/revocation/acceptance, affiliation decisions, membership changes, and related deletion/restoration. Preliminary lookups discover IDs only. Under the locks, recheck non-deleted users, the actor's current session `auth_version`, verified email, current permissions, parent/profile eligibility, and token state before changing access. The parent company lock also serializes creation when a membership row does not yet exist.
+Access-changing transactions use one lock order: required existing actor/recipient `users`, `social_accounts`, `login_challenges`, `companies`, `professionals`, `company_users`, `company_claims`, `claim_tokens`, then `team_invitations`; sort multiple rows within each table by ID and skip unrelated tables. This covers login verification and revocation, Google linking, account onboarding, claims, invitation creation/reissue/revocation/acceptance, affiliation decisions, membership changes, and related deletion/restoration. Preliminary lookups discover IDs only. Under the locks, recheck non-deleted users, the actor's current session `auth_version`, verified email where required, current permissions, provider binding/challenge state, parent/profile eligibility, and token state before changing access. The parent company lock also serializes creation when a membership row does not yet exist. The user lock serializes one-time onboarding and Google binding creation; provider-subject uniqueness also resolves races involving different users.
 
 User deletion locks the actor/target users before discovering and locking all companies affected by the target's memberships, profiles, claims, or onboarding tokens. Grants must lock the recipient user first, preventing new grants during cleanup; company deletion serializes grants on its company lock. Never acquire an earlier lock class after a later one; restart if an earlier lock is newly needed. Perform lifecycle cleanup and the state change in the same transaction.
 
@@ -472,7 +478,11 @@ Phase 1 may write raw rows. Phase 2 can add a daily aggregate table if volume gr
 
 ### 4.14 `password_reset_tokens` / `sessions`
 
-Use Laravel's standard password-reset token table and database-backed session table. The session cookie carries an opaque session identifier, never an API bearer token. Store the authenticated user's validated `auth_version` and login timestamp in the server session payload; enforce expiry and check the version/current user on every protected request. Account-wide revocation increments the user version and removes existing session rows, so a racing request cannot revive access by persisting an old session afterward. Password reset does not sign the user in; login still requires password and email code.
+Use Laravel's standard password-reset token table and database-backed session table. The Laravel session cookie carries an opaque session identifier; Passport's separate encrypted JWT `laravel_token` cookie supplies first-party API authentication. Both are `HttpOnly`, `Secure` in production, `SameSite=Lax`, and host-only with `Path=/` in the default same-origin deployment. The separate JavaScript-readable `XSRF-TOKEN` cookie supplies the required CSRF header, including on protected API `GET` requests. Cookies and credentials never appear in JSON responses or browser localStorage/sessionStorage.
+
+Store the authenticated user's validated `auth_version` and completed-login timestamp in the server session payload. Enforce expiry and require Passport's authenticated user to match a live web session and the current user/version on every protected browser API request. The Passport cookie represents a transient first-party token; it has no corresponding `oauth_access_tokens` row. Revoking OAuth access-token rows alone therefore cannot invalidate a browser cookie. Browser routes reject bearer credentials. `GET /auth/session` issues the Passport cookie only after the email-code flow has created a valid authenticated web session, as detailed in [ARCHITECTURE.md](ARCHITECTURE.md#5-auth-flow).
+
+Password reset/change, email change, account deletion/restoration, platform-role changes, and Google linking or other login-method changes increment the user's version, invalidate pending challenges, and remove existing sessions in the same lifecycle transaction. Once external OAuth is enabled, also revoke that user's external access/refresh credentials. Version checks prevent a racing request from reviving access by persisting an old session afterward. Logout destroys only the current session and expires both authentication cookies; a copied Passport cookie must fail without its live matching session. Password reset does not sign the user in; a Google-only user may establish a password through that flow and must then complete a fresh login.
 
 ### 4.15 `team_invitations`
 
@@ -514,14 +524,16 @@ Claim creation, review, token reissue, acceptance, and lifecycle cleanup take th
 
 ### 4.17 `login_challenges`
 
-Short-lived state for password-validated, still-unauthenticated login. This also provides initial mailbox verification; it is separate from company claims, invitations, and public verification badges.
+Short-lived state for a password- or Google-validated, still-unauthenticated login. Google proof replaces only the password step; both methods use the same email-code policy. This also provides initial mailbox verification; it is separate from company claims, invitations, and public verification badges.
 
 | Column | Type | Notes |
 | --- | --- | --- |
 | id | uuid PK | random public challenge identifier; not an authentication credential |
 | user_id | bigint FK → users | intended active user |
-| email | varchar(255) | current normalized email snapshot |
-| auth_version | bigint | user version validated when the password was checked |
+| method | varchar(16) | `password` or `google` |
+| social_account_id | bigint FK → social_accounts | nullable for password; required for Google and must belong to `user_id` |
+| email | varchar(255) | current normalized local email snapshot; code delivery target |
+| auth_version | bigint | user version validated when the initial password or Google credential was checked |
 | session_binding_hash | char(64) | SHA-256 of a random nonce held only in the anonymous server session |
 | code_mac | char(64) | nullable HMAC-SHA-256 over challenge ID and code; key stored outside the database |
 | failed_attempts | smallint | default 0; maximum 5 across all resends |
@@ -532,11 +544,39 @@ Short-lived state for password-validated, still-unauthenticated login. This also
 | created_at | timestamptz | |
 | updated_at | timestamptz | |
 
-Index `user_id`, `session_binding_hash`, and `expires_at`. Store no raw code or raw binding nonce here. Use cryptographically random six-digit strings, constant-time MAC comparison, and a separate securely configured MAC key. Clear `code_mac` when consumed, revoked, or expired; regularly purge expired challenge rows. Shared atomic account/IP rate limits cap initial sends plus resends at three per account per 15 minutes and constrain new password/challenge attempts as well. The limit survives replacement challenges.
+Index `user_id`, `social_account_id`, `session_binding_hash`, and `expires_at`. A check requires `social_account_id IS NULL` for `method = password` and non-null for `method = google`, rejecting all other methods. A composite foreign key `(social_account_id, user_id)` references `social_accounts(id, user_id)`; Google challenges must also reference provider `google`, rechecked under lock. Store no raw code or raw binding nonce here. Use cryptographically random six-digit strings, constant-time MAC comparison, and a separate securely configured MAC key. Clear `code_mac` when consumed, revoked, or expired; regularly purge expired challenge rows. Shared atomic account/IP rate limits cap initial sends plus resends at three per account per 15 minutes and constrain new password/challenge attempts as well. The limit survives replacement challenges and switching between password and Google sign-in.
 
-Creation, resend, and verification lock the user before the challenge rows (ordered by ID); replacement revokes the previous challenge for that browser. Before verification or resend, recheck active user, matching email/version/session binding, expiry, attempt budget, and unused/unrevoked state. Resend replaces the MAC but retains the deadline and failed-attempt count. Count wrong codes atomically and revoke at the fifth failure. Only one concurrent successful verification may consume a challenge; mark `email_verified_at` if null in that transaction. Never sign in at the password-only step. The authenticated session receives exactly the validated challenge version, then its ID and CSRF token are regenerated.
+Creation, resend, and verification lock the user, the linked social account when applicable, then the challenge rows under the shared order in §4.4; replacement revokes the previous challenge for that browser. Before verification or resend, recheck active user, the unchanged Google binding when applicable, matching local email/version/session binding, expiry, attempt budget, and unused/unrevoked state. Always mail the code to the user's current local email; provider email changes never replace that address. Resend replaces the MAC but retains the deadline and failed-attempt count. Count wrong codes atomically and revoke at the fifth failure. Only one concurrent successful verification may consume a challenge; mark `email_verified_at` if null in that transaction. Never sign in at the password-only step or Google callback. The authenticated session receives exactly the validated challenge version, then its ID and CSRF token are regenerated. The browser refreshes CSRF and calls `GET /auth/session` to obtain the Passport cookie before accessing protected API routes.
 
-Increment the user's version and revoke pending challenges on password reset/change, email change, account deletion/restoration, and platform-role changes; clear `email_verified_at` on email change. Version checks also reject sessions persisted late after revocation. A mail failure cannot complete login. Queue code emails only after commit, protect transient queue payloads, and discard them after delivery/expiry; do not put codes in logs.
+Apply all account-wide revocation events in §4.14, including Google linking/login-method changes; clear `email_verified_at` on local email change. A mail failure cannot complete login. Queue code emails only after commit, protect transient queue payloads, and discard them after delivery/expiry; do not put codes in logs.
+
+### 4.18 `social_accounts`
+
+Google sign-in uses Laravel Socialite with session-bound state verification. The callback resolves Google's stable subject ID; an email address is never the identity key.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | bigint PK | |
+| user_id | bigint FK → users | bound local account |
+| provider | varchar(32) | `google` at launch |
+| provider_subject | varchar(255) | stable Google subject; case-sensitive equality/collation, never lowercase or `citext` |
+| provider_email | varchar(255) | nullable informational provider value; never overwrites `users.email` |
+| created_at | timestamptz | |
+| updated_at | timestamptz | |
+
+Unique `(provider, provider_subject)` and `(user_id, provider)` prevent a subject belonging to multiple users and multiple Google identities on one user. Unique `(id, user_id)` supports the challenge ownership foreign key in §4.17. Store no Google access or refresh tokens. Retain the identity binding through local account soft deletion; a deleted user cannot sign in, create a replacement account, or move their binding to another user. Restoration requires a fresh completed login.
+
+An unbound Google subject with a provider-verified email unused by any local user creates only an ordinary `users` row (`platform_role = user`, `password = NULL`, `email_verified_at = NULL`) and its binding in one transaction. Preserve provider-supplied names when available; missing names remain null until collected. Create no company, professional, or membership implicitly. Then start the usual email-code challenge; Google verification does not skip local mailbox verification. Existing bindings resolve by subject even if the provider email has changed, and codes still go only to current `users.email`.
+
+An unbound subject whose email matches any existing account must not create or merge an account. The user first signs in through an existing method and explicitly starts `POST /api/account/google/link`. Linking requires a completed login within the last ten minutes, verified local email, and a provider-verified Google email matching that local address. Bind OAuth state/proof to the current account and linking purpose; recheck the recent completed login, current version, active account, and verified-email match under the user/social-account locks when the callback completes. A subject already bound to another user, or a different Google subject already bound to this user, is a conflict. Successful linking increments `auth_version`, invalidates sessions/challenges, and requires a fresh login; it never changes the user's role or company relationships.
+
+After completing login, an account without any accepted company membership or existing professional may call `POST /api/onboarding/company` or `POST /api/onboarding/professional` for the authenticated user only. Both require `first_name` and `last_name`; company onboarding also requires `company_name`, while professional onboarding requires `company_id` and `job_title`. Under the shared locks, recheck the current user/version and absence of an accepted membership or any professional row, including a retained soft-deleted one, to serialize one-time onboarding. Persist the names and apply the existing registration rules in the same transaction: company onboarding creates a draft company and accepted owner membership with `claimed_at`; professional onboarding creates a draft with pending affiliation and no membership. A user may instead complete a valid claim or invitation without creating duplicate profile records.
+
+### 4.19 Passport infrastructure
+
+Install Passport's standard migrations for the selected supported release, including `oauth_clients`, `oauth_auth_codes`, `oauth_access_tokens`, and `oauth_refresh_tokens`, plus any additional tables required by that release. Retain the framework's identifier types, columns, indexes, and lifecycle defaults rather than replacing them with the directory's bigint conventions. Provision Passport signing keys now and keep private keys outside the database/source control, separately from the Laravel app key.
+
+These tables prepare for future delegated OAuth integrations; the first-party browser cookie in §4.14 does not create access/refresh-token rows. External client registration, bearer API routes, and external OAuth authorization/token issuance remain disabled in Phase 1. Before enabling an integration, complete its authorization-code-with-PKCE flow, explicit consent and least-privilege scopes, exact redirect allowlist, separate route authorization, refresh-token rotation, and access/refresh revocation, including the account lifecycle rules above. Password and implicit grants remain disabled.
 
 ---
 
@@ -554,6 +594,8 @@ Not soft-deleted:
 - company_users and all taxonomy/location pivots: rows removed when an association ends
 - claim_tokens, team_invitations, company_claims: keep lifecycle history; use expiry, revocation, or review state
 - login_challenges: short-lived state; consume/revoke and purge expired rows under §4.17
+- social_accounts: retain provider bindings through user soft deletion; reject login while the user is deleted
+- sessions, password_reset_tokens, and Passport infrastructure: use framework expiry/revocation/cleanup with the account lifecycle rules above
 - profile_events: append-only measurement rows
 - plans: disable with `is_active`
 
@@ -563,7 +605,7 @@ Lifecycle side effects must be transactional, use the shared locking rules in §
 
 - Deleting a professional revokes unused invitations and removes its professional-only membership, preserving independent owner/admin roles. Restore as draft with pending affiliation, null verification/review fields, and no automatically recreated membership or invitation.
 - Deleting a company hides its team, rejects pending/approved claims under §4.16, revokes unused invitations/claim tokens, and removes company memberships. Restore the company as draft with `claimed_at = NULL`; ownership requires a new request and review.
-- Deleting a user increments `auth_version`, invalidates sessions and pending login challenges, removes memberships, rejects that user's pending/approved claims under §4.16, and revokes their unused onboarding tokens. Linked roster profiles retain their historical user association and route new inquiries to the company fallback. Clear `claimed_at` when the last accepted company owner is removed. Restoring an account increments `auth_version` again and requires fresh password/code login; it does not restore revoked relationships, sessions, or tokens. A retained approved/published professional requires accepted membership before the restored user can edit it.
+- Deleting a user increments `auth_version`, invalidates sessions and pending login challenges, removes memberships, rejects that user's pending/approved claims under §4.16, and revokes their unused onboarding tokens; also revoke external OAuth access/refresh credentials once those integrations exist. Retain Google identity bindings and reject their login while the user is deleted. Linked roster profiles retain their historical user association and route new inquiries to the company fallback. Clear `claimed_at` when the last accepted company owner is removed. Restoring an account increments `auth_version` again and requires fresh password-or-Google plus email-code login; it does not restore revoked relationships, sessions, or tokens. A retained approved/published professional requires accepted membership before the restored user can edit it.
 - Restore operations check the partial unique slug constraints before clearing `deleted_at`; a reused slug requires a new unique slug. Articles restore as draft.
 
 ---

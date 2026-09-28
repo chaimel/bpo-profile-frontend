@@ -1,0 +1,15 @@
+// Order matters:
+//   fonts      — CSS @import must be first in the output
+//   colors     — generates the :root color custom properties
+//   normalize  — cross-browser baseline
+//   reset      — opinionated zeroing on top of normalize
+//   preset     — tokens, body defaults, helpers (consumes color vars)
+//   typography — type scale + text utilities
+//   layout     — .wrapper + flex helpers
+@forward 'fonts';
+@forward 'colors';
+@forward 'normalize';
+@forward 'reset';
+@forward 'preset';
+@forward 'typography';
+@forward 'layout';

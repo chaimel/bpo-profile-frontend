@@ -1,0 +1,4 @@
+// Global stylesheet entry point.
+// Loaded once via nuxt.config.ts -> css.
+@use 'base';
+@use 'component';

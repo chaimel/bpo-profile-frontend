@@ -1,0 +1,14 @@
+// =============================================================
+// FONTS
+// Web-font loading. Forwarded FIRST in base/_index.scss so this
+// CSS @import lands at the very top of the compiled output
+// (a CSS @import is ignored by browsers if any rule precedes it).
+// Family tokens (--font-base etc.) live in base/_preset.scss.
+//
+// Poppins — headings and UI; the brand's primary typeface (PDF p. 27)
+// Carlito — open, metric-compatible stand-in for Calibri, the brand's
+//           secondary typeface. Calibri sits first in --font-base, so
+//           devices that already have it never download Carlito.
+// =============================================================
+
+@import url('https://fonts.googleapis.com/css2?family=Carlito:ital,wght@0,400;0,700;1,400&family=Poppins:wght@400;500;600;700&display=swap');

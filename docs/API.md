@@ -2,13 +2,13 @@
 
 **Base:** `/api`  
 **Format:** JSON  
-**Auth:** Laravel Sanctum SPA session for first-party Nuxt  
+**Auth:** Passport SPA cookie + live Laravel session for Nuxt; Socialite for Google login  
 **Public endpoints:** no auth  
 **Write endpoints:** auth unless noted
 
 Errors use Laravel-style validation (`422` with `errors` object) and `401` / `403` / `404`.
 
-This contract implements [BPO Profile.pdf](BPO%20Profile.pdf); framework, route names, and workflow details are implementation decisions. Basic company claims and verification are Phase 1 launch features (PDF page 25). Editorial resources and curated discovery landings expand in Phase 2; billing and individual professional plans are deferred to Phase 3. Untagged endpoints are Phase 1 unless their section states otherwise.
+This contract implements [BPO Profile.pdf](BPO%20Profile.pdf); framework, route names, and workflow details are implementation decisions. Basic company claims and verification are Phase 1 launch features (PDF page 25). The proposed delivery plan puts editorial resources/curated landings in Phase 2 and billing/individual professional packages in Phase 3; these dates are not prescribed by the PDF. Both company and professional paid packages remain in the product direction (PDF p. 4). Untagged endpoints are Phase 1 under that proposed schedule.
 
 ---
 
@@ -16,27 +16,32 @@ This contract implements [BPO Profile.pdf](BPO%20Profile.pdf); framework, route 
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
-| GET | `/sanctum/csrf-cookie` | no | Set CSRF cookie (Sanctum, not under `/api` if default) |
+| GET | `/auth/csrf-cookie` | no | Custom Laravel web route; anonymous session/CSRF bootstrap, 204 |
+| GET | `/auth/session` | completed web session | Bootstrap/renew Passport HttpOnly cookie, 204 |
 | POST | `/api/register` | no | Create account for an existing-company claim or team invitation |
 | POST | `/api/register/company` | no | Create user + company |
 | POST | `/api/register/professional` | no | Create user + pending professional affiliation |
 | POST | `/api/login` | no | Validate password and send login code; session remains anonymous |
 | POST | `/api/login/verify` | pending challenge | Verify code and complete authenticated session |
 | POST | `/api/login/resend` | pending challenge | Replace code for the same pending session |
-| POST | `/api/logout` | yes | End session |
+| GET | `/api/login/challenge` | pending challenge | Bound challenge metadata after Google callback |
+| GET | `/auth/google/redirect` | no | Start Google sign-in with server-held state |
+| GET | `/auth/google/callback` | bound OAuth state | Resolve Google identity and start email challenge, or complete explicit linking |
+| POST | `/api/account/google/link` | recent completed login | Begin explicit linking for the current account |
+| POST | `/api/logout` | completed web session | Invalidate session and clear session/Passport cookies |
 | GET | `/api/me` | yes | Current user + memberships |
 | POST | `/api/forgot-password` | no | Send reset link |
 | POST | `/api/reset-password` | no | Set new password |
 
-Every authenticated endpoint requires a completed password/code login, a non-deleted email-verified user, and a current session `auth_version`. “Pending challenge” permits only verification/resend in its bound anonymous session, never dashboard access.
+Protected browser APIs require Passport cookie authentication plus a matching live `web` session with a non-deleted email-verified user and current `auth_version`. Complete password-or-Google plus code login first under the current proposed policy. `/auth/session` and `/api/logout` use completed web-session checks without requiring a current Passport cookie. Pending challenge routes permit only metadata/verify/resend in their bound anonymous session. Google routes validate their server-held OAuth state; none of these pending states grants dashboard access.
 
-All first-party browser writes follow the [Sanctum auth flow](ARCHITECTURE.md#5-auth-flow), including public forms and events: initialize CSRF, send credentials and the URL-decoded cookie as `X-XSRF-TOKEN`, and request JSON responses. “No auth” means no account required; it does not disable CSRF protection.
+Follow the [Passport browser auth flow](ARCHITECTURE.md#5-auth-flow): initialize CSRF, send credentials and the URL-decoded cookie as `X-XSRF-TOKEN` on every protected Passport request including GET, and on all browser writes including public forms/events. Request JSON for API/bootstrap calls; Google routes use browser navigation and state-validated redirects. “No auth” does not disable CSRF on writes.
 
 `POST /api/register` takes `first_name`, `last_name`, `email`, `password`, and `password_confirmation`. It creates no company, professional, or membership; the verified user completes a claim or invitation flow below. This is provider onboarding, not a buyer-account feature. Registration, login, verification, and reset endpoints are rate limited.
 
 ### Password and email-code login
 
-All provider and platform-admin accounts use this flow on every fresh sign-in. Registration returns `201` with `{ "next_action": "login" }`, leaves `email_verified_at = null`, and creates no authenticated session. The first successful code check verifies the current email. There are no separate `/api/email/verify/...` or verification-notification endpoints in this contract.
+The current proposed policy applies the email-code step to every fresh provider/admin sign-in, including Google. This frequency is an implementation assumption, not specified by the PDF or explicitly requested by the user; confirm it before implementing this contract. Password registration returns `201` with `{ "next_action": "login" }`, leaves `email_verified_at = null`, and creates no authenticated session. The first successful code check verifies the current email. There are no separate `/api/email/verify/...` or verification-notification endpoints in this contract.
 
 `POST /api/login` takes `email` and `password`. Valid credentials start a pending challenge and return `202`:
 
@@ -61,11 +66,34 @@ The session remains anonymous: `/api/me`, dashboards, claims, and admin routes r
 }
 ```
 
-Keep the code as a six-character string, including leading zeros. Verify only with the original anonymous session and valid CSRF header; the challenge ID alone grants no authority. On success, atomically consume the challenge, verify the account email if needed, regenerate the session ID/CSRF token, and return `200` with `{ "status": "authenticated" }`. Authentication is carried by the HttpOnly session cookie, with no bearer token in JSON. Read the updated CSRF cookie before another write, then fetch `/api/me`. Replays, superseded codes, expired/revoked challenges, or a wrong session return a generic `422`; account/IP throttling returns `429` with `Retry-After`. Protected endpoints also reject stale `auth_version` sessions.
+Keep the code as a six-character string, including leading zeros. Verify only with the original anonymous session and valid CSRF header; the challenge ID alone grants no authority. On success, atomically consume the challenge, verify the account email if needed, regenerate the session ID/CSRF token, and return `200` with `{ "status": "authenticated" }`. This completes the HttpOnly web session without returning an access/refresh token. Read the fresh CSRF cookie and call `GET /auth/session` to obtain the Passport cookie before fetching `/api/me`; include the CSRF header on protected GETs. Passport's fresh-cookie middleware does not issue its cookie on this POST. Replays, superseded codes, expired/revoked challenges, or a wrong session return a generic `422`; account/IP throttling returns `429` with `Retry-After`. Protected endpoints also reject stale `auth_version` sessions.
 
-`POST /api/login/resend` takes only `challenge_id`, requires its pending session and CSRF header, and returns `202` with the same challenge shape and remaining `expires_in`. It does not accept a replacement email address or extend the original ten-minute deadline. Wait 60 seconds between sends; allow at most three sends including the initial one per account per 15 minutes. Resending invalidates the previous code but preserves the five-failed-attempt budget. At the fifth failure revoke the challenge; restarting requires the password and remains subject to aggregate account/IP limits. Concurrent verification/resend requests must share the same locked state.
+`POST /api/login/resend` takes only `challenge_id`, requires its pending session and CSRF header, and returns `202` with the same challenge shape and remaining `expires_in`. It does not accept a replacement email address or extend the original ten-minute deadline. Wait 60 seconds between sends; allow at most three sends including the initial one per account per 15 minutes. Resending invalidates the previous code but preserves the five-failed-attempt budget. At the fifth failure revoke the challenge; restarting requires a new password or Google credential step and remains subject to aggregate account/IP limits. Concurrent verification/resend requests must share the same locked state.
 
-Cookie attributes, keyed code storage, delivery failures, and session invalidation follow the [architecture auth flow](ARCHITECTURE.md#5-auth-flow) and [login challenge schema](DATABASE.md#417-login_challenges). Forgotten-password responses are generic regardless of account existence. A successful password reset revokes old sessions/challenges and requires a fresh password/code login; it never authenticates the reset request.
+Cookie attributes, keyed code storage, delivery failures, and session invalidation follow the [architecture auth flow](ARCHITECTURE.md#5-auth-flow) and [login challenge schema](DATABASE.md#417-login_challenges). Forgotten-password responses are generic regardless of account existence. A successful password reset revokes old sessions/challenges and requires a fresh password-or-Google plus code login; it never authenticates the reset request.
+
+### Google sign-in, linking, and onboarding
+
+`GET /auth/google/redirect` and `/auth/google/callback` are Laravel-owned browser redirects outside the JSON API base. Socialite validates session state and exchanges Google's code server-side. The callback resolves the stable subject, starts the same pending email-code challenge as password login, and redirects to the fixed Nuxt `/login/verify` page. It grants no authenticated session. Invalid/expired/replayed state, provider denial, or an unavailable account redirects to `/login` with a generic failure indication and no credentials or account identifiers in the URL.
+
+`GET /api/login/challenge` returns `200` with the challenge shape above only to the bound pending session, or `404` if none remains valid. It never exposes a code/provider token. Password and Google challenges share verify/resend endpoints, ten-minute expiry, and the account/IP attempt/send limits.
+
+An unknown Google subject with an unused email creates an ordinary account with nullable password/names, no memberships, and an unverified local email until the code succeeds. A known subject selects its existing linked account without overwriting local email, roles, or memberships. A matching local email without a Google link requires existing-account login and explicit linking; never silently merge. Google-only users may establish a local password through the password-reset flow, then complete fresh login.
+
+`POST /api/account/google/link` requires a completed login within ten minutes and valid CSRF. Return `200` with `{ "redirect_url": "https://accounts.google.com/..." }`; store link intent, actor/version, expiry, and state on the server. The callback requires the same current session and a verified Google email matching the local verified email; reject identity ownership conflicts. Success increments `auth_version`, revokes existing sessions/challenges, and redirects to `/login`. Self-service unlinking is not in the launch contract.
+
+After login, an account-only user can complete onboarding:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| POST | `/api/onboarding/company` | Create draft company and accepted owner for the current user |
+| POST | `/api/onboarding/professional` | Create the current user's draft professional with pending affiliation |
+
+Both require completed Passport/live-session authentication, verified local email, and `first_name` / `last_name`; company onboarding also requires `company_name`, professional onboarding `company_id` and `job_title`. Reuse the registration validation/transactions with the current user supplied by the server; accept no password, user ID, role, review, or verification fields. Reject an existing professional or accepted membership with `422`, and serialize on the user row to prevent duplicate onboarding. Account-only users may instead proceed to claims/invitations.
+
+### Passport OAuth readiness
+
+Passport migrations/signing keys and browser-cookie authentication are Phase 1. External OAuth clients and `/oauth/**` authorization/token routes remain disabled (`404`); Phase 1 browser APIs reject `Authorization: Bearer ...`. A later integration contract defines Authorization Code + PKCE, consent, scopes, lifetimes, refresh/revocation, and separate bearer routes under the same resource policies. No password or implicit grants.
 
 ### `POST /api/register/company`
 
@@ -96,7 +124,7 @@ Company registration creates a draft company, sets `claimed_at`, and creates an 
 }
 ```
 
-`company_id` and `job_title` are required. The company must exist and be available for registration. Create the user and a draft professional with `affiliation_status = pending` in one transaction; do not create a `company_users` membership yet. After completing password/code login, the user may edit their own private draft, but has no company-management or company-inbox access. An accepted company owner/admin or platform admin reviews affiliation. Approval creates an accepted `professional` membership (preserving any existing owner/admin role); publication still requires platform-admin review. Reject attempts to create a second professional for the same user.
+`company_id` and `job_title` are required. The company must exist and be available for registration. Create the user and a draft professional with `affiliation_status = pending` in one transaction; do not create a `company_users` membership yet. After completing password-or-Google plus code login, the user may edit their own private draft, but has no company-management or company-inbox access. An accepted company owner/admin or platform admin reviews affiliation. Approval creates an accepted `professional` membership (preserving any existing owner/admin role); publication still requires platform-admin review. Reject attempts to create a second professional for the same user.
 
 ### `GET /api/me` (shape)
 
@@ -115,13 +143,13 @@ Company registration creates a draft company, sets `claimed_at`, and creates an 
 }
 ```
 
-`companies` includes accepted memberships only; a pending or rejected affiliation is exposed through the user's own `professional` object. Account-only users can have an empty `companies` array and `professional = null`.
+Google-created users may have null first/last names until onboarding collects them. Token/identity secrets never appear here. `companies` includes accepted memberships only; a pending or rejected affiliation is exposed through the user's own `professional` object. Account-only users can have an empty `companies` array and `professional = null`.
 
 ---
 
 ## 2. Public catalogs
 
-Used by SSR pages. Taxonomies and locations require `is_active = true` and `deleted_at IS NULL`; they have no publication status. Plans require `is_active = true` and have no soft-delete column. Return company plans at launch; individual professional plans require the Phase 3 assignment and entitlement model before they can be offered.
+Used by SSR pages. Taxonomies and locations require `is_active = true` and `deleted_at IS NULL`; they have no publication status. Plans require `is_active = true` and have no soft-delete column. Under the proposed release plan, return company plans at launch. The PDF's paid-package direction includes both companies and professionals (p. 4); the individual package catalog, assignment, entitlements, and billing contract still need explicit design for the proposed Phase 3 delivery. The current company-only response is not the complete commercial product model.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -194,7 +222,7 @@ Professional search supports `q`, `service`, `industry`, `location`, `country`, 
 
 Geographic filters match the selected active, non-deleted location and its active, non-deleted descendants. Companies match any operating `company_locations` row in that subtree, not just HQ. Professionals match their primary `location_id`; `professional_markets` describes served markets and does not imply physical presence. A `country` slug resolves to a country root. When both `country` and `location` are given, intersect them and require the location to belong to that country; invalid, inactive, deleted, or conflicting selections return `422`. Thus a country or region search includes companies/professionals recorded at a city below it.
 
-For `sort=relevance`, apply the brief's priorities in order: relevance, profile completeness, verification, location/service match, quality, then eligible premium visibility (PDF page 23). Use `id ASC` only to break remaining ties. The shared scoring and placement-eligibility rules are in `DATABASE.md`; premium placement cannot skip an earlier priority. `newest` and `name` are explicit alternative sorts, never a bypass of visibility or filtering rules.
+The proposed `sort=relevance` implementation orders relevance, profile completeness, verification, location/service match, quality, then eligible premium visibility, with `id ASC` for remaining ties. PDF page 23 supplies the product priorities, not this exact comparison algorithm or score formulas. Validate this proposal with representative queries; shared scoring and placement eligibility are in `DATABASE.md`, and the current policy prevents premium placement from skipping an earlier priority. `newest` and `name` are explicit alternative sorts, never a bypass of visibility or filtering rules.
 
 ### Company card (list)
 
@@ -497,6 +525,8 @@ Admin company patch example:
 | Code | When |
 | --- | --- |
 | 200 / 201 | OK / created |
+| 204 | CSRF or Passport-cookie bootstrap complete |
+| 302 | Google browser redirects; no application credentials in redirect URLs |
 | 202 | Login code challenge created or resent; not authenticated |
 | 401 | Missing/expired/revoked authenticated session, pending login challenge, or invalid login credentials |
 | 403 | Authenticated but not allowed |
@@ -511,4 +541,4 @@ Unpublished profiles return `404` on public show, not `403`, so slugs cannot be 
 
 ## 11. Versioning
 
-No `/v1` prefix at launch. Breaking changes wait until an external client exists. The Nuxt app is the only consumer in Phase 1.
+No `/v1` prefix at launch. Breaking changes wait until an external client exists. Nuxt is the only API consumer in Phase 1. Passport is prepared for future OAuth clients; Google is an identity provider, not a consumer of the directory API.
