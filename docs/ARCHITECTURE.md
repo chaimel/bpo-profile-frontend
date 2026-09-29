@@ -2,12 +2,12 @@
 
 **Style:** Nuxt 4 SPA/SSR frontend + Laravel 13 REST JSON API  
 **Auth:** Laravel Passport (SPA cookies now, OAuth2 integrations later) + Socialite (Google login)  
-**Database:** PostgreSQL  
+**Database:** MySQL in development and production; Homestead MySQL for local development\
 **Hosting shape (later):** two apps, one database, object storage for media
 
 This document describes how the two apps fit together and the frontend file structure to use when implementation starts. It is not a scaffold.
 
-The product requirements come from [BPO Profile.pdf](BPO%20Profile.pdf): discovery and profile relationships (pp. 14-25), search priorities (p. 23), measurement (p. 37), and accessibility (pp. 38-39). Nuxt, Laravel, PostgreSQL, cookie authentication, and the workflows below are implementation decisions that support that brief; the PDF does not prescribe a stack. Delivery phases follow [PLAN.md](PLAN.md).
+The product requirements come from [BPO Profile.pdf](BPO%20Profile.pdf): discovery and profile relationships (pp. 14-25), search priorities (p. 23), measurement (p. 37), and accessibility (pp. 38-39). Nuxt, Laravel, MySQL, cookie authentication, and the workflows below are implementation decisions that support that brief; the PDF does not prescribe a stack. Delivery phases follow [PLAN.md](PLAN.md).
 
 ---
 
@@ -27,7 +27,7 @@ The product requirements come from [BPO Profile.pdf](BPO%20Profile.pdf): discove
                     └──────┬───────┘
              ┌─────────────┼─────────────┐
              ▼             ▼             ▼
-        PostgreSQL     File disk      Mail
+           MySQL       File disk      Mail
                        (S3 later)    (inquiries)
 ```
 
@@ -433,7 +433,11 @@ Render user content as escaped text. Any supported rich text must pass a maintai
 | Passport OAuth server | persistent signing keys; external clients/routes disabled until enabled |
 | Public media | `/storage/**` served from Laravel's public disk, or object-storage URLs |
 | Mail | transactional provider |
-| Search | PostgreSQL |
+| Development database | MySQL; local development uses the Homestead MySQL server |
+| Production database | MySQL on the production database server |
+| Search | MySQL queries; see [database search notes](DATABASE.md#7-search-notes-database-side) |
+
+The `development`, `homestead`, and `production` profiles must all target MySQL. Keep the MySQL version, InnoDB engine, character set/collations, SQL mode, and UTC connection time zone consistent across environments. Connection hosts, database names, and credentials are environment-specific; see [SETUP.md](SETUP.md#3-environment-pieces).
 
 Preferred deployment: one public domain; route `/api/**` and `/auth/**` to Laravel, serve `/storage/**` from Laravel's public disk when using local media, and send other paths to Nuxt. The SSR API base must resolve to Laravel from the Nuxt server.
 

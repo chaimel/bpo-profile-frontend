@@ -1,12 +1,20 @@
 # BPO Profile — Database
 
-**Engine:** PostgreSQL  
+**Engine:** MySQL in development and production; Homestead MySQL for local development\
 **App:** Laravel 13 (Eloquent)  
-**Conventions:** `snake_case` tables and columns, `id` bigint primary keys and `created_at` / `updated_at` unless a table below explicitly defines a composite key or creation-only timestamps. `deleted_at` exists only where listed. Slugs on soft-deleted entities are unique among non-deleted rows, enforced by partial unique indexes. Pivots and append-only events are explicit exceptions to the default key/timestamp convention; Laravel infrastructure tables retain their framework defaults.
+**Conventions:** `snake_case` tables and columns, `id` bigint primary keys and `created_at` / `updated_at` unless a table below explicitly defines a composite key or creation-only timestamps. `deleted_at` exists only where listed. Slugs on soft-deleted entities are unique among non-deleted rows, enforced by unique functional indexes on conditional expressions. Pivots and append-only events are explicit exceptions to the default key/timestamp convention; Laravel infrastructure tables retain their framework defaults.
 
 This model covers the directory foundation and the verification/claim workflows required before public launch ([BPO Profile.pdf](BPO%20Profile.pdf), pp. 24-25), plus company plan/entitlement fields needed for later billing. The tables and workflow details are implementation decisions, not a schema prescribed by the PDF. Individual professional plan assignments and curated combination SEO pages require explicit later schema design; they are not implemented by the current company plan relationship.
 
 ---
+
+### MySQL schema conventions
+
+- Use InnoDB and `utf8mb4` in development, Homestead, and production. Keep the MySQL version, collations, SQL mode, and UTC connection time zone aligned. Use MySQL 8.0.16 or later for the enforced `CHECK` constraints required by this schema; see [MySQL CHECK constraints](https://dev.mysql.com/doc/refman/8.0/en/create-table-check-constraints.html).
+- `bigint` primary and foreign keys use matching unsigned types through Laravel's `id()` / `foreignId()`. Store all timestamps in UTC using MySQL `timestamp` columns and UTC application/connection settings; these columns do not retain the original time-zone offset. Framework-owned tables keep their migration-defined types.
+- Use native `json`, `varchar(45)` for IPv4/IPv6 addresses, and `char(36)` for UUID values (Laravel's `uuid()` mapping). Validate IP addresses and UUIDs in the application.
+- Conditional uniqueness uses MySQL unique functional indexes: each indexed expression returns its column value when the condition holds and `NULL` otherwise. MySQL permits multiple null entries in unique indexes. For example, `CREATE UNIQUE INDEX companies_active_slug_unique ON companies ((CASE WHEN deleted_at IS NULL THEN slug ELSE NULL END));` protects active slugs while allowing reuse after deletion. For conditional composite keys, wrap each key column in that same condition. See [MySQL functional indexes](https://dev.mysql.com/doc/refman/8.0/en/create-index.html#create-index-functional-key-parts).
+- An ordinary unique index on a nullable column, such as `professionals.user_id` or `profile_events.inquiry_id`, already allows multiple null values. Do not use a unique `(slug, deleted_at)` index to enforce active-slug uniqueness: null `deleted_at` values would allow duplicate active slugs. Application prechecks complement the database constraints; they do not replace them.
 
 ## 1. Entity map
 
@@ -102,14 +110,14 @@ Buyers have no rows in `users` at launch.
 | first_name | varchar(100) | nullable only while an account-only Google user awaits name completion |
 | last_name | varchar(100) | nullable only while an account-only Google user awaits name completion |
 | email | varchar(255) | unique; normalize consistently across registration, Google onboarding, and invitations |
-| email_verified_at | timestamptz | nullable |
+| email_verified_at | timestamp | nullable |
 | password | varchar(255) | nullable for Google-only accounts; otherwise Laravel-supported password hash, never plaintext |
 | auth_version | bigint | default 0; monotonically incremented for session/challenge revocation |
 | remember_token | varchar(100) | nullable; persistent remember-me disabled in Phase 1 |
-| last_login_at | timestamptz | nullable |
-| created_at | timestamptz | |
-| updated_at | timestamptz | |
-| deleted_at | timestamptz | soft delete |
+| last_login_at | timestamp | nullable |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+| deleted_at | timestamp | soft delete |
 
 Indexes: unique `email`, index `platform_role`.
 
@@ -131,8 +139,8 @@ Password registration still requires first name, last name, and password. A newl
 | analytics_level | varchar(32) | `none`, `basic`, `advanced` |
 | sort_order | int | |
 | is_active | boolean | |
-| created_at | timestamptz | |
-| updated_at | timestamptz | |
+| created_at | timestamp | |
+| updated_at | timestamp | |
 
 No payments table in Phase 1. Admin sets `companies.plan_id` and `companies.plan_expires_at`, validating that the plan is active and has `audience = company`. All three initial plan tiers belong to companies; the `professional` plan slug is a company tier name, not an individual subscription. Individual professional subscriptions and their entitlements are deferred to Phase 3 and require a separate assignment model.
 
@@ -142,7 +150,7 @@ No payments table in Phase 1. Admin sets `companies.plan_id` and `companies.plan
 | --- | --- | --- |
 | id | bigint PK | |
 | plan_id | bigint FK → plans | default Basic |
-| plan_expires_at | timestamptz | nullable; null = no expiry |
+| plan_expires_at | timestamp | nullable; null = no expiry |
 | name | varchar(200) | |
 | slug | varchar(220) | unique among non-deleted |
 | tagline | varchar(255) | nullable |
@@ -150,26 +158,26 @@ No payments table in Phase 1. Admin sets `companies.plan_id` and `companies.plan
 | why_choose_us | text | nullable |
 | website_url | varchar(500) | nullable |
 | linkedin_url | varchar(500) | nullable |
-| other_social_json | jsonb | nullable |
+| other_social_json | json | nullable |
 | founded_year | int | nullable |
 | company_size | varchar(32) | see enum below; default `unknown` |
 | work_model | varchar(32) | `onshore`, `offshore`, `nearshore`, `hybrid`, `unknown`; default `unknown` |
 | hq_location_id | bigint FK → locations | nullable |
 | year_established_note | varchar(255) | nullable extra display text |
 | status | varchar(32) | `draft`, `pending_review`, `published`, `suspended`; default `draft` |
-| claimed_at | timestamptz | nullable |
-| verified_at | timestamptz | nullable |
-| featured_until | timestamptz | nullable |
+| claimed_at | timestamp | nullable |
+| verified_at | timestamp | nullable |
+| featured_until | timestamp | nullable |
 | completeness_score | int | 0–100, default 0; maintained by app |
 | quality_score | int | 0–100, default 0; maintained by app using the shared quality rubric |
 | inquiry_email | varchar(255) | nullable while draft; validated fallback inbox required before publication |
 | phone | varchar(50) | nullable |
 | seo_title | varchar(255) | nullable |
 | seo_description | varchar(320) | nullable |
-| published_at | timestamptz | nullable |
-| created_at | timestamptz | |
-| updated_at | timestamptz | |
-| deleted_at | timestamptz | soft delete |
+| published_at | timestamp | nullable |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+| deleted_at | timestamp | soft delete |
 
 Company-provided client proof/testimonials from the brief (PDF p. 16) can be stored as attributed text within `overview` at launch. This does not add a buyer-review table or imply platform verification of those statements.
 
@@ -177,10 +185,10 @@ Company-provided client proof/testimonials from the brief (PDF p. 16) can be sto
 
 Indexes:
 
-- partial unique `slug` where `deleted_at IS NULL` (required database constraint; application checks alone are insufficient)
+- unique functional index on `CASE WHEN deleted_at IS NULL THEN slug ELSE NULL END` (required database constraint; application checks alone are insufficient)
 - `status`, `plan_id`, `hq_location_id`
 - `completeness_score`, `verified_at`, `featured_until`
-- Search indexes must match the chosen query strategy; trigram indexes are optional, not a requirement to add a generic GIN index to a text column
+- Search indexes must match the chosen MySQL query strategy; use B-tree indexes for filters and eligible prefix searches, with optional `FULLTEXT` indexes for later full-text search
 
 ### 4.4 `company_users`
 
@@ -190,10 +198,10 @@ Indexes:
 | company_id | bigint FK → companies | |
 | user_id | bigint FK → users | |
 | role | varchar(32) | `owner`, `admin`, `professional` |
-| invited_at | timestamptz | nullable |
-| accepted_at | timestamptz | nullable |
-| created_at | timestamptz | |
-| updated_at | timestamptz | |
+| invited_at | timestamp | nullable |
+| accepted_at | timestamp | nullable |
+| created_at | timestamp | |
+| updated_at | timestamp | |
 
 Unique `(company_id, user_id)`. Index `user_id`.
 
@@ -212,7 +220,7 @@ User deletion locks the actor/target users before discovering and locking all co
 | user_id | bigint FK → users | nullable until claimed |
 | affiliation_status | varchar(32) | `pending`, `approved`, `rejected`; default `pending` |
 | affiliation_reviewed_by | bigint FK → users | nullable; approving/rejecting company owner/admin or platform admin |
-| affiliation_reviewed_at | timestamptz | nullable |
+| affiliation_reviewed_at | timestamp | nullable |
 | first_name | varchar(100) | |
 | last_name | varchar(100) | |
 | slug | varchar(220) | unique among non-deleted |
@@ -227,18 +235,18 @@ User deletion locks the actor/target users before discovering and locking all co
 | public_email | varchar(255) | nullable; prefer form over exposing email |
 | phone | varchar(50) | nullable |
 | status | varchar(32) | `draft`, `pending_review`, `published`, `suspended` |
-| verified_at | timestamptz | nullable |
-| featured_until | timestamptz | nullable |
+| verified_at | timestamp | nullable |
+| featured_until | timestamp | nullable |
 | completeness_score | int | 0–100 |
 | quality_score | int | 0–100, default 0; maintained by app using the shared quality rubric |
 | seo_title | varchar(255) | nullable |
 | seo_description | varchar(320) | nullable |
-| published_at | timestamptz | nullable |
-| created_at | timestamptz | |
-| updated_at | timestamptz | |
-| deleted_at | timestamptz | soft delete |
+| published_at | timestamp | nullable |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+| deleted_at | timestamp | soft delete |
 
-Unique `user_id` where not null. Partial unique `slug` where `deleted_at IS NULL`. Indexes: `company_id`, `status`, `affiliation_status`, `location_id`, `completeness_score`. Both score columns have checks restricting them to 0–100, as do the company score columns.
+Ordinary unique index on nullable `user_id`. Unique functional index on `CASE WHEN deleted_at IS NULL THEN slug ELSE NULL END`. Indexes: `company_id`, `status`, `affiliation_status`, `location_id`, `completeness_score`. Both score columns have checks restricting them to 0–100, as do the company score columns.
 
 Professional registration requires an existing, non-deleted `company_id` and creates a linked draft with pending affiliation and both scores initialized to zero. It does not create a `company_users` row. An email-verified accepted company owner/admin or platform admin reviews the affiliation; approval of a self-registered applicant requires their verified email, sets the review fields, and creates an accepted `professional` membership atomically, preserving any existing owner/admin role. Rejection leaves the draft private and grants no company access. An owner/admin-created unclaimed roster row has approved affiliation, records that actor as reviewer, and keeps `user_id = NULL` until invitation acceptance.
 
@@ -258,11 +266,11 @@ Affiliation approval and publication are separate decisions: the platform admin 
 | iso_code | varchar(8) | ISO 3166-1 for countries |
 | sort_order | int | |
 | is_active | boolean | |
-| created_at | timestamptz | |
-| updated_at | timestamptz | |
-| deleted_at | timestamptz | soft delete |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+| deleted_at | timestamp | soft delete |
 
-Indexes: partial unique `(parent_id, slug)` where `deleted_at IS NULL AND parent_id IS NOT NULL`; partial unique `slug` where `deleted_at IS NULL AND parent_id IS NULL`; `type`, `iso_code`. The separate root index prevents duplicate country slugs despite a null parent.
+Indexes: unique functional composite index on `parent_id` and `slug`, each conditional on `deleted_at IS NULL AND parent_id IS NOT NULL`; a separate unique functional index on `slug` conditional on `deleted_at IS NULL AND parent_id IS NULL`; ordinary indexes on `type`, `iso_code`. Each conditional expression returns `NULL` outside its condition, as described above. The separate root index prevents duplicate country slugs despite a null parent.
 
 `company_locations`
 
@@ -271,9 +279,9 @@ Indexes: partial unique `(parent_id, slug)` where `deleted_at IS NULL AND parent
 | company_id | bigint FK | |
 | location_id | bigint FK | country, region, or city |
 | is_headquarters | boolean | default false |
-| created_at | timestamptz | |
+| created_at | timestamp | |
 
-PK or unique `(company_id, location_id)`. Add a partial unique index on `company_id` where `is_headquarters = true`, allowing at most one HQ pivot per company.
+PK or unique `(company_id, location_id)`. Add a unique functional index on `CASE WHEN is_headquarters = 1 THEN company_id ELSE NULL END`, allowing at most one HQ pivot per company.
 
 `companies.hq_location_id` must match the sole HQ pivot, or be null with no HQ flags. The locations write transaction locks the company, validates active/non-deleted locations, requires HQ to be one of the selected operating locations, replaces pivots, and synchronizes both representations. Removing HQ requires choosing a new HQ or explicitly clearing it; dashboard and admin writes share this rule.
 
@@ -283,7 +291,7 @@ PK or unique `(company_id, location_id)`. Add a partial unique index on `company
 | --- | --- | --- |
 | professional_id | bigint FK | |
 | location_id | bigint FK | usually country |
-| created_at | timestamptz | |
+| created_at | timestamp | |
 
 Unique `(professional_id, location_id)`.
 
@@ -302,11 +310,11 @@ Same shape for `services`, `industries`, `capabilities`, `languages`, `technolog
 | seo_description | varchar(320) | nullable |
 | sort_order | int | |
 | is_active | boolean | |
-| created_at | timestamptz | |
-| updated_at | timestamptz | |
-| deleted_at | timestamptz | soft delete |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+| deleted_at | timestamp | soft delete |
 
-Each taxonomy has a partial unique index on `slug` where `deleted_at IS NULL`. Public catalog reads require `is_active = true AND deleted_at IS NULL`.
+Each taxonomy has a unique functional index on `CASE WHEN deleted_at IS NULL THEN slug ELSE NULL END`. Public catalog reads require `is_active = true AND deleted_at IS NULL`.
 
 `work_model` is a fixed API enum (`onshore`, `offshore`, `nearshore`, `hybrid`, `unknown`) backed by the `companies.work_model` field, not a taxonomy table. Curated service + location and industry + service SEO pages (PDF p.35) are a Phase 2 content model to design explicitly; taxonomy rows alone do not establish which combinations exist or have indexable content. Location landing paths follow the stored parent hierarchy, including the region segment for cities nested under regions.
 
@@ -355,9 +363,9 @@ Seed industries:
 | issuer | varchar(150) | nullable |
 | year | int | nullable |
 | sort_order | int | |
-| created_at | timestamptz | |
-| updated_at | timestamptz | |
-| deleted_at | timestamptz | soft delete |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+| deleted_at | timestamp | soft delete |
 
 ### 4.9 `media`
 
@@ -375,9 +383,9 @@ Single table for logos, covers, photos, article images.
 | mime_type | varchar(100) | |
 | size_bytes | int | |
 | alt_text | varchar(255) | nullable |
-| created_at | timestamptz | |
-| updated_at | timestamptz | |
-| deleted_at | timestamptz | soft delete |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+| deleted_at | timestamp | soft delete |
 
 Indexes: `(owner_type, owner_id, kind)`.
 
@@ -397,15 +405,15 @@ One table for contact, questions, and quote requests.
 | sender_company | varchar(200) | nullable |
 | sender_phone | varchar(50) | nullable |
 | message | text | |
-| meta_json | jsonb | optional service interest, budget, timeline |
+| meta_json | json | optional service interest, budget, timeline |
 | status | varchar(32) | `new`, `read`, `replied`, `archived`, `spam` |
 | source_path | varchar(255) | page that submitted |
-| ip_address | inet | nullable |
+| ip_address | varchar(45) | nullable; validated IPv4 or IPv6 address |
 | user_agent | varchar(255) | nullable |
-| read_at | timestamptz | nullable |
-| created_at | timestamptz | |
-| updated_at | timestamptz | |
-| deleted_at | timestamptz | soft delete |
+| read_at | timestamp | nullable |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+| deleted_at | timestamp | soft delete |
 
 Indexes: `company_id`, `professional_id`, `assigned_user_id`, `status`, `created_at`, `sender_email`.
 
@@ -423,11 +431,11 @@ Enforce company/professional consistency with a unique key on `professionals(id,
 | user_id | bigint FK → users | required intended claimant |
 | email | varchar(255) | intended claimant |
 | token_hash | varchar(64) | |
-| expires_at | timestamptz | |
-| used_at | timestamptz | nullable |
-| revoked_at | timestamptz | nullable |
-| created_at | timestamptz | |
-| updated_at | timestamptz | |
+| expires_at | timestamp | |
+| used_at | timestamp | nullable |
+| revoked_at | timestamp | nullable |
+| created_at | timestamp | |
+| updated_at | timestamp | |
 
 Index `company_id`, unique `token_hash`.
 
@@ -446,12 +454,12 @@ Generate at least 32 cryptographically random bytes before URL-safe encoding and
 | status | varchar(32) | `draft`, `published` |
 | seo_title | varchar(255) | nullable |
 | seo_description | varchar(320) | nullable |
-| published_at | timestamptz | nullable |
-| created_at | timestamptz | |
-| updated_at | timestamptz | |
-| deleted_at | timestamptz | soft delete |
+| published_at | timestamp | nullable |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+| deleted_at | timestamp | soft delete |
 
-Partial unique `slug` where `deleted_at IS NULL`. Can ship empty in Phase 1 and fill in Phase 2.
+Unique functional index on `CASE WHEN deleted_at IS NULL THEN slug ELSE NULL END`. Can ship empty in Phase 1 and fill in Phase 2.
 
 ### 4.13 `profile_events`
 
@@ -461,14 +469,14 @@ Lightweight analytics covering profile views, search visibility, contact actions
 | --- | --- | --- |
 | id | bigint PK | |
 | event | varchar(32) | `view`, `search_impression`, `cta_click`, `website_click`, `inquiry` |
-| event_key | uuid | required unique key; reuse the same key when retrying an event submission |
+| event_key | char(36) | required unique key; reuse the same key when retrying an event submission |
 | company_id | bigint FK | required; derived from the professional when a person is the target |
 | professional_id | bigint FK | nullable |
 | inquiry_id | bigint FK → inquiries | required only for server-generated `inquiry` events |
 | occurred_on | date | UTC date derived from server `created_at`; for daily rollups later |
-| created_at | timestamptz | |
+| created_at | timestamp | |
 
-Indexes: unique `event_key`; unique `inquiry_id` where not null; `(company_id, event, created_at)`, `(professional_id, event, created_at)`. A check requires `inquiry_id IS NOT NULL` exactly when `event = inquiry`; all other event types require it to be null. Every profile event requires `company_id`; `professional_id` optionally narrows the target to a person. Add the same composite professional/company foreign key as inquiries. For inquiry events, server-side validation also requires the event target to match the linked inquiry.
+Indexes: unique `event_key`; ordinary unique index on nullable `inquiry_id`; `(company_id, event, created_at)`, `(professional_id, event, created_at)`. A check requires `inquiry_id IS NOT NULL` exactly when `event = inquiry`; all other event types require it to be null. Every profile event requires `company_id`; `professional_id` optionally narrows the target to a person. Add the same composite professional/company foreign key as inquiries. For inquiry events, server-side validation also requires the event target to match the linked inquiry.
 
 The browser may send only `view`, `search_impression`, `cta_click`, and `website_click`. Emit a view once per displayed profile page, an impression once per result card that becomes visible within a result display, and a click once per user action. A new display/action receives a new UUID; retries reuse it and do not add rows. The server validates public targets and derives company from professional; arbitrary client company IDs are not trusted. These are event counts, not counts of unique people.
 
@@ -494,11 +502,11 @@ Password reset/change, email change, account deletion/restoration, platform-role
 | email | varchar(255) | intended invitee; normalized using the same rule as user email |
 | invited_by_user_id | bigint FK → users | accepted company owner/admin or platform admin |
 | token_hash | varchar(64) | unique; never store the raw token |
-| expires_at | timestamptz | |
-| accepted_at | timestamptz | nullable |
-| revoked_at | timestamptz | nullable |
-| created_at | timestamptz | |
-| updated_at | timestamptz | |
+| expires_at | timestamp | |
+| accepted_at | timestamp | nullable |
+| revoked_at | timestamp | nullable |
+| created_at | timestamp | |
+| updated_at | timestamp | |
 
 Index `company_id`, `professional_id`, and `email`; unique `token_hash`. Composite foreign key `(professional_id, company_id)` references `professionals(id, company_id)`. Generate tokens from at least 32 cryptographically random bytes and store only SHA-256 hashes. Reissuing an invitation revokes earlier unused invitations for that roster row.
 
@@ -513,12 +521,12 @@ Acceptance requires an authenticated active user with matching verified email an
 | user_id | bigint FK → users | authenticated claimant |
 | status | varchar(32) | `pending`, `approved`, `rejected`, `fulfilled` |
 | reviewed_by_user_id | bigint FK → users | nullable; platform admin |
-| reviewed_at | timestamptz | nullable |
+| reviewed_at | timestamp | nullable |
 | review_note | text | nullable; internal admin evidence/decision, not public |
-| created_at | timestamptz | |
-| updated_at | timestamptz | |
+| created_at | timestamp | |
+| updated_at | timestamp | |
 
-Index `(company_id, status)` and `user_id`. Partial unique `(company_id, user_id)` where `status = pending` prevents duplicate pending requests. Admin approval records the reviewer and creates a claim token bound to this request, company, user, and email. It does not create membership or publish/verify a company. Ownership is granted only by the atomic acceptance flow in §4.11; multiple applicants may request a company, but locking and the unclaimed-company check serialize ownership assignment.
+Index `(company_id, status)` and `user_id`. A unique functional composite index on `company_id` and `user_id`, each expressed as `CASE WHEN status = 'pending' THEN <column> ELSE NULL END`, prevents duplicate pending requests. Admin approval records the reviewer and creates a claim token bound to this request, company, user, and email. It does not create membership or publish/verify a company. Ownership is granted only by the atomic acceptance flow in §4.11; multiple applicants may request a company, but locking and the unclaimed-company check serialize ownership assignment.
 
 Claim creation, review, token reissue, acceptance, and lifecycle cleanup take the applicable user/company and child-row locks under §4.4. Approval/reissue require an active verified-email claimant and a non-deleted, still-unclaimed company without an accepted owner; token issuance requires an approved, unfulfilled request. Company deletion rejects its pending/approved claims; claimant deletion rejects that user's pending/approved claims; acceptance rejects all competing pending/approved claims. Append a lifecycle reason to `review_note`, preserve prior `reviewed_by_user_id` / `reviewed_at` and evidence, update `updated_at`, and revoke the corresponding unused tokens in the same transaction. Automatic rejection is not a new admin review. Fulfilled/rejected history remains unchanged. Restoration or later loss of the final owner requires a new request and review.
 
@@ -528,7 +536,7 @@ Short-lived state for a password- or Google-validated, still-unauthenticated log
 
 | Column | Type | Notes |
 | --- | --- | --- |
-| id | uuid PK | random public challenge identifier; not an authentication credential |
+| id | char(36) PK | random UUID challenge identifier; not an authentication credential |
 | user_id | bigint FK → users | intended active user |
 | method | varchar(16) | `password` or `google` |
 | social_account_id | bigint FK → social_accounts | nullable for password; required for Google and must belong to `user_id` |
@@ -537,12 +545,12 @@ Short-lived state for a password- or Google-validated, still-unauthenticated log
 | session_binding_hash | char(64) | SHA-256 of a random nonce held only in the anonymous server session |
 | code_mac | char(64) | nullable HMAC-SHA-256 over challenge ID and code; key stored outside the database |
 | failed_attempts | smallint | default 0; maximum 5 across all resends |
-| last_sent_at | timestamptz | latest code dispatch; enforce at least 60 seconds before resend |
-| expires_at | timestamptz | ten minutes after creation; resend never extends it |
-| consumed_at | timestamptz | nullable; successful use |
-| revoked_at | timestamptz | nullable; replaced, exhausted, or invalidated |
-| created_at | timestamptz | |
-| updated_at | timestamptz | |
+| last_sent_at | timestamp | latest code dispatch; enforce at least 60 seconds before resend |
+| expires_at | timestamp | ten minutes after creation; resend never extends it |
+| consumed_at | timestamp | nullable; successful use |
+| revoked_at | timestamp | nullable; replaced, exhausted, or invalidated |
+| created_at | timestamp | |
+| updated_at | timestamp | |
 
 Index `user_id`, `social_account_id`, `session_binding_hash`, and `expires_at`. A check requires `social_account_id IS NULL` for `method = password` and non-null for `method = google`, rejecting all other methods. A composite foreign key `(social_account_id, user_id)` references `social_accounts(id, user_id)`; Google challenges must also reference provider `google`, rechecked under lock. Store no raw code or raw binding nonce here. Use cryptographically random six-digit strings, constant-time MAC comparison, and a separate securely configured MAC key. Clear `code_mac` when consumed, revoked, or expired; regularly purge expired challenge rows. Shared atomic account/IP rate limits cap initial sends plus resends at three per account per 15 minutes and constrain new password/challenge attempts as well. The limit survives replacement challenges and switching between password and Google sign-in.
 
@@ -559,10 +567,10 @@ Google sign-in uses Laravel Socialite with session-bound state verification. The
 | id | bigint PK | |
 | user_id | bigint FK → users | bound local account |
 | provider | varchar(32) | `google` at launch |
-| provider_subject | varchar(255) | stable Google subject; case-sensitive equality/collation, never lowercase or `citext` |
+| provider_subject | varchar(255) | stable Google subject; case-sensitive `utf8mb4_bin` collation, never lowercase |
 | provider_email | varchar(255) | nullable informational provider value; never overwrites `users.email` |
-| created_at | timestamptz | |
-| updated_at | timestamptz | |
+| created_at | timestamp | |
+| updated_at | timestamp | |
 
 Unique `(provider, provider_subject)` and `(user_id, provider)` prevent a subject belonging to multiple users and multiple Google identities on one user. Unique `(id, user_id)` supports the challenge ownership foreign key in §4.17. Store no Google access or refresh tokens. Retain the identity binding through local account soft deletion; a deleted user cannot sign in, create a replacement account, or move their binding to another user. Restoration requires a fresh completed login.
 
@@ -606,7 +614,7 @@ Lifecycle side effects must be transactional, use the shared locking rules in §
 - Deleting a professional revokes unused invitations and removes its professional-only membership, preserving independent owner/admin roles. Restore as draft with pending affiliation, null verification/review fields, and no automatically recreated membership or invitation.
 - Deleting a company hides its team, rejects pending/approved claims under §4.16, revokes unused invitations/claim tokens, and removes company memberships. Restore the company as draft with `claimed_at = NULL`; ownership requires a new request and review.
 - Deleting a user increments `auth_version`, invalidates sessions and pending login challenges, removes memberships, rejects that user's pending/approved claims under §4.16, and revokes their unused onboarding tokens; also revoke external OAuth access/refresh credentials once those integrations exist. Retain Google identity bindings and reject their login while the user is deleted. Linked roster profiles retain their historical user association and route new inquiries to the company fallback. Clear `claimed_at` when the last accepted company owner is removed. Restoring an account increments `auth_version` again and requires fresh password-or-Google plus email-code login; it does not restore revoked relationships, sessions, or tokens. A retained approved/published professional requires accepted membership before the restored user can edit it.
-- Restore operations check the partial unique slug constraints before clearing `deleted_at`; a reused slug requires a new unique slug. Articles restore as draft.
+- Restore operations check the conditional unique slug constraints before clearing `deleted_at`; a reused slug requires a new unique slug. Articles restore as draft.
 
 ---
 
@@ -627,11 +635,11 @@ Threshold for the “Profile complete” badge: score ≥ 80. These weights and 
 Phase 1 search can be SQL:
 
 - Filter publicly eligible companies/professionals by pivot IDs and `locations`, using the rules in §5. A geographic filter selects an active, non-deleted location and its active, non-deleted descendants: match company operating locations through `company_locations`, or a professional's primary `location_id`. Served markets remain distinct from physical location. Resolve `country` to its country root; combined country/location selections must agree and are intersected, with invalid or conflicting input rejected as `422` in the API.
-- `ILIKE` / `pg_trgm` on name, tagline, job title.
+- Use parameterized `LIKE` queries on name, tagline, and job title with a case-insensitive `utf8mb4` collation. Escape literal `%` and `_` in user search input. Leading-wildcard substring searches can scan rows; measure query plans and latency as the directory grows.
 - Apply the priority order in PDF p.23: relevance match count, `completeness_score`, verification, requested location/service match, profile quality, then premium placement. Sort each score descending, with `id ASC` as the deterministic final tie-breaker. Verification is a boolean (`verified_at IS NOT NULL`); quality uses `quality_score`. The premium ranking signal is neutral in Phase 1. From Phase 2 it is eligible only when the active assigned company plan allows it, the entitlement has not expired, and `featured_until > now()`. Professionals use the parent company's plan until individual plans are designed in Phase 3. Editorial featured slots may exist in Phase 2 without a premium ranking boost.
 - Location/service match counts requested matches; no requested filter gives a neutral score. No text query gives neutral relevance. These computed scores and completeness/quality defaults must be shared across company and professional search. Premium status must never override a higher-priority match, completeness, verification, or quality tier.
 
-Full-text `tsvector` columns can be added later without changing entities.
+MySQL `FULLTEXT` indexes with `MATCH (...) AGAINST (...)` can be added later on supported text columns. Define and test token length, stopwords, and ranking behavior before switching from `LIKE`; preserve the product's relevance and ranking contract.
 
 ---
 

@@ -394,7 +394,7 @@ These are implementation defaults, not requirements prescribed by the PDF. Chang
 2. **A sales professional references one company.** Self-registration requires company and job title, with affiliation pending until approved; multi-company representation is later.
 3. **Company admin can invite team members by email.** Professionals can also register and request affiliation.
 4. **Unclaimed companies can exist** so the directory can be seeded. Only claimed profiles are fully editable by the company.
-5. **Nuxt/Vue/TypeScript, Laravel/Passport with Socialite for Google, and PostgreSQL** are the chosen stack. Passport is selected now for future OAuth readiness; confirm exact version compatibility when implementation begins.
+5. **Nuxt/Vue/TypeScript, Laravel/Passport with Socialite for Google, and MySQL** are the chosen stack. Development and production both use MySQL; local development uses Homestead's MySQL server. Passport is selected now for future OAuth readiness; confirm exact version compatibility when implementation begins.
 6. **One inquiry table** covers contact, question, and quote-request via a `type` field.
 7. **Soft deletes** on users, companies, professionals, inquiries, articles, and taxonomy terms.
 8. **English-first UI.** Languages listed on profiles are capabilities, not a translated product in Phase 1.

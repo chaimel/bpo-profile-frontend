@@ -9,7 +9,9 @@ How this would be built later. Not a scaffold. No install command dump. Product 
 | App | Stack | Role |
 | --- | --- | --- |
 | `web` | Nuxt 4, Vue 3, TypeScript | Public site + dashboards |
-| `api` | Laravel 13, compatible PHP runtime, PostgreSQL, Passport, Socialite | JSON API + Google sign-in |
+| `api` | Laravel 13, compatible PHP runtime, MySQL, Passport, Socialite | JSON API + Google sign-in |
+
+Use MySQL in both development and production. Local development uses the MySQL server in Homestead. The `development`, `homestead`, and `production` profiles must all use the MySQL driver, with separate connection settings and credentials for each environment.
 
 Prefer one public hostname later (`bpoprofile.com`) with `/api` and `/auth` proxied to Laravel, including the Google callback. When using local public media, serve `/storage/**` from Laravel's public disk. Other routes go to Nuxt; server-rendered data requests use a separate absolute Laravel API base. Keep external OAuth authorization/token issuance routes unavailable at launch; provisioning Passport does not authorize third-party integrations.
 
@@ -19,7 +21,7 @@ Before scaffolding, verify supported PHP, Node, database, framework, and package
 
 ## 2. Build order (when coding starts)
 
-1. Laravel project, PostgreSQL, migrations matching `docs/DATABASE.md`
+1. Laravel project, MySQL (Homestead locally, MySQL in production), migrations matching `docs/DATABASE.md`
 2. Seed plans, services, industries, languages, capabilities, technologies, countries
 3. Passport browser-cookie auth with live Laravel sessions, password or Google sign-in followed by an emailed code, first-login email verification, and `/api/me`
 4. Company/professional write APIs, pending affiliation approval, and company-scoped policies
@@ -38,7 +40,7 @@ Phase 1 is public launch, so the minimum claim and manual verification workflows
 
 ---
 
-## 3. Environment pieces (names only)
+## 3. Environment pieces
 
 - Nuxt public origin
 - Laravel app URL and server-only absolute API base for Nuxt SSR
@@ -46,13 +48,25 @@ Phase 1 is public launch, so the minimum claim and manual verification workflows
 - Laravel session and Passport cookie security flags, session lifetime, and optional cookie domain (host-only by default)
 - Passport signing keys, kept server-side and provisioned separately from the Laravel app key
 - Google OAuth client ID, client secret, and exact server callback URL for Socialite; these identify the app to Google, not clients of our Passport OAuth server
-- PostgreSQL connection and server-side session store
+- MySQL connection and server-side session store
 - Shared cache/rate-limit store across API instances
 - Mailer and login-code delivery configuration
 - File disk (`public` for local public media, then S3) and public media URL
 - App key / session encryption
 
-Exact `.env` keys belong in the repos when they exist, not here.
+### MySQL environment configuration
+
+The API's root `.env` selects an environment with `ENV=development`, `ENV=homestead`, or `ENV=production`; connection settings belong in the corresponding `api/environments/.env.<profile>` file. Set `DB_CONNECTION=mysql` in all three profiles. The existing development example currently selects SQLite; replace its connection settings with MySQL settings when applying this setup.
+
+| Profile | Database intent |
+| --- | --- |
+| `development` | MySQL development database; use the Homestead server for local work |
+| `homestead` | Homestead MySQL at `192.168.56.56:3306` from Windows, database `bpoprofile_dev`, username `homestead` |
+| `production` | Production MySQL server, database `bpoprofile_prod`, with dedicated production credentials |
+
+The Homestead address above matches this project's host-side setup. If Laravel runs inside the VM, use `127.0.0.1:3306` for the VM's own MySQL server. Set the production host, port, and secrets through the deployment environment; local credentials are development-only.
+
+Keep the MySQL version, InnoDB engine, `utf8mb4` character set/collations, SQL mode, and UTC connection time zone aligned between development and production. Follow the [MySQL schema conventions](DATABASE.md#mysql-schema-conventions) for types, conditional uniqueness, and enforced checks. Validate migrations and database-specific behavior against an isolated MySQL test database before release.
 
 ---
 
