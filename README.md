@@ -39,6 +39,13 @@ app/
 
 Browse `/styleguide` (noindex) for every base and core component with its variants.
 
+For investors and other reviewers, `/static/guide` covers the business (the goal, who it serves,
+the business model, growth, roadmap and risks, from the brief and `docs/PLAN.md`), then how the
+static demo works, with four guided tours. `/static/sitemap` lists every screen with a link to each
+of its states. Both are noindex and not linked from the site's menus, so share the URL directly.
+Their copy lives in `app/data/features/guide.ts` and `sitemap.ts`: update the sitemap when you add
+a route or a `?state=` preview, and the guide when the plan changes.
+
 ## Routes
 
 | Area | Routes |
@@ -48,6 +55,7 @@ Browse `/styleguide` (noindex) for every base and core component with its varian
 | Auth | `/login` `/login/verify` `/register` `/forgot-password` `/reset-password` `/onboarding` |
 | Company + sales dashboard | `/dashboard` `/dashboard/profile` `/dashboard/inquiries` `/dashboard/stats` `/dashboard/account` `/dashboard/companies/[companyId]` (+ `/services` `/locations` `/team` `/team/[professionalId]` `/inquiries` `/stats`) |
 | Platform admin | `/admin` `/admin/companies` `/admin/companies/[id]` `/admin/professionals` `/admin/professionals/[id]` `/admin/claims` `/admin/inquiries` `/admin/users` `/admin/taxonomies/[taxonomy]` `/admin/locations` |
+| Demo reference (noindex) | `/static/guide` `/static/sitemap` (`/static` redirects to the guide) `/styleguide` |
 
 Screens with several states take a `state` prop that the page reads from `?state=` while the
 UI is static — for example `/find?state=error`, `/login?state=verify`, `/login?state=linked`,
