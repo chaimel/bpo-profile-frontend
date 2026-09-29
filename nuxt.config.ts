@@ -18,6 +18,10 @@ export default defineNuxtConfig({
 	// Links on these routes carry single-use tokens: never send them on
 	// in the Referer header (the pages also set the meta tag).
 	routeRules: {
+		// The demo sitemap links to these intentional 404 previews.
+		// Skip them when generating static pages for Netlify.
+		'/no-such-page': { prerender: false },
+		'/companies/no-such-company': { prerender: false },
 		'/claim/**': { headers: { 'Referrer-Policy': 'no-referrer' } },
 		'/invitations/**': { headers: { 'Referrer-Policy': 'no-referrer' } },
 		'/reset-password': { headers: { 'Referrer-Policy': 'no-referrer' } },
