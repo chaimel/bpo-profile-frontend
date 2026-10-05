@@ -2,16 +2,25 @@
 
 **Style:** Nuxt 4 SPA/SSR frontend + Laravel 13 REST JSON API  
 **Auth:** Laravel Passport (SPA cookies now, OAuth2 integrations later) + Socialite (Google login)  
-**Database:** MySQL in development and production; Homestead MySQL for local development\
+**Database:** MySQL target (Homestead/production); SQLite convenience development/test profile\
 **Hosting shape (later):** two apps, one database, object storage for media
 
-This document describes how the two apps fit together and the frontend file structure to use when implementation starts. It is not a scaffold.
+This document describes the existing apps, their independent Phase 1 responsibilities, and the future connected architecture. Nuxt currently stays on typed local fixtures for investor review. Laravel is implemented and tested separately. Do not introduce frontend-to-API requests or live external-service flows until the user explicitly requests connection.
 
 The product requirements come from [BPO Profile.pdf](BPO%20Profile.pdf): discovery and profile relationships (pp. 14-25), search priorities (p. 23), measurement (p. 37), and accessibility (pp. 38-39). Nuxt, Laravel, MySQL, cookie authentication, and the workflows below are implementation decisions that support that brief; the PDF does not prescribe a stack. Delivery phases follow [PLAN.md](PLAN.md).
 
 ---
 
 ## 1. System diagram
+
+Current work has two independent paths:
+
+```text
+Investor browser -> Nuxt pages -> Pinia stores -> local typed fixtures
+API tests        -> Laravel    -> isolated test database / provider fakes
+```
+
+The diagram below is the **future integrated target**, not the current investor-preview setup:
 
 ```
                     ┌──────────────┐
@@ -61,7 +70,7 @@ Nuxt owns pages, SEO HTML, and UI. Laravel owns users, profiles, search queries,
 
 Follow the organization used in `myblog/frontend`: route files live in `app/pages/`, feature UI lives in `app/components/features/`, and each feature's `Index.vue` composes its own sections. For example, `features/home/Index.vue` imports and renders `features/home/Banner.vue`.
 
-The following is the planned layout inside `frontend/`. Only the documentation exists here today; create implementation files as their features are built. The feature names below are BPO Profile examples, using the same organization as the reference project.
+The following is the intended layout inside `frontend/`; application code now exists in this repository. Follow the current feature organization when adding files. The diagram is structural guidance, not a claim that every planned feature is implemented. The feature names below are BPO Profile examples, using the same organization as the reference project.
 
 ```text
 frontend/
@@ -128,7 +137,7 @@ Apply the same page-to-feature pattern to auth, onboarding, dashboards, admin, a
 
 #### Page and feature composition
 
-Keep route files small. They select the feature, set page metadata/layout/middleware, and handle route parameters, page-level data loading, and SEO where needed. Pass fetched data to the feature through props; reusable request logic belongs in composables and the typed API client.
+Keep route files small. They select the feature, set page metadata/layout/middleware, and handle route parameters, page-level data loading, and SEO where needed. Pass store-supplied data to the feature through props. Current stores use local fixtures; request logic and the typed API client are future integration work.
 
 For the home route, `app/pages/index.vue` loads the feature entry component:
 
@@ -241,6 +250,10 @@ The banner template uses the matching `banner` and `banner__title` classes. This
 
 ### State
 
+**Current frontend:** keep fixture-backed Pinia stores and existing local preview states. Simulate form results, session roles, and analytics without Laravel. The lack of live catalog requests is intentional; it is not a Phase 1 frontend defect. Review new plan/term rendering with additional mock rows, including fallback presentation for a tier without static copy.
+
+The following state/request rules apply **after explicitly requested integration**:
+
 - Session user loaded in the browser from `GET /api/me`; authenticated dashboard/admin routes render client-side
 - Company dashboard selection is explicit in `/api/dashboard/companies/{companyId}/...`; Laravel validates an accepted owner/admin membership for every request
 - An account awaiting onboarding may have no professional profile or company membership; a pending professional may edit their own draft without gaining company permissions
@@ -297,6 +310,8 @@ Search uses one shared proposed ranking policy based on the priorities listed on
 
 ## 5. Auth flow
 
+This is the Laravel contract, verified independently with API tests. Nuxt's Phase 1 investor review simulates these states and keeps Google/auth buttons local; real browser redirects, cookies, and CSRF wiring wait for requested integration.
+
 ### Passport cookies and CSRF
 
 Passport is the chosen API authentication and OAuth2 foundation. Socialite handles Google identity. For the Nuxt browser, use Passport's SPA cookie mode alongside Laravel's server-side `web` session; configure the `api` guard for Passport. Both the session cookie and `laravel_token` are `HttpOnly`, `Secure` in production, `SameSite=Lax`, and `Path=/`, with host-only scope for the default same-origin deployment. Browser login responses expose no access/refresh tokens in JSON, and Nuxt stores no credentials in localStorage/sessionStorage.
@@ -313,7 +328,7 @@ Production requires HTTPS and correct trusted-proxy configuration. See the [envi
 
 ### Password and email-code login
 
-The current proposed policy requires an emailed code after a password or Google identity for every fresh provider/admin login. It retains the verification-screen pattern discussed earlier, with no trusted-device bypass. The PDF specifies registration/sign-in and trust verification (p. 25), not a code at every login; this frequency remains an implementation assumption to confirm before implementation, as tracked in [PLAN.md](PLAN.md#12-implementation-decisions-and-source-traceability).
+The current standalone API requires an emailed code after a password or Google identity for every fresh provider/admin login, with no trusted-device bypass. The PDF specifies registration/sign-in and trust verification (p. 25), not a code at every login; this is existing implementation behavior and can be revisited as a separate product decision. The frontend previews the verification screens locally. See [source traceability](PLAN.md#12-implementation-decisions-and-source-traceability).
 
 1. The browser calls `GET /auth/csrf-cookie` with credentials enabled. This initializes a CSRF-protected anonymous session, not an authenticated account.
 2. `POST /api/login` checks email/password without signing the user into the guard. Valid credentials create a short-lived `login_challenges` record bound to the active user, current email, `auth_version`, and anonymous browser session. Email a code and return `202` with the challenge details; `/api/me` and other protected endpoints still return `401`.
@@ -331,7 +346,7 @@ An email code confirms mailbox access; it is not phishing-resistant MFA or compa
 
 ### Google sign-in and linking
 
-Google identity replaces the password step; under the current proposed login policy, the emailed-code step still completes sign-in. This every-login code policy is an implementation assumption, not a requirement in the PDF or part of Passport/Socialite itself.
+Google identity replaces the password step in the standalone API; the emailed-code step still completes sign-in. This existing policy is an application decision, not a requirement in the PDF or part of Passport/Socialite itself. The mock frontend does not initiate Google's real authorization flow.
 
 1. Navigate to `GET /auth/google/redirect`. Laravel records login intent and a session-bound, single-use OAuth `state` with a ten-minute deadline, then redirects through Socialite. Request only `openid`, `email`, and `profile`; keep the client secret on the server. Use the exact configured callback and keep state verification enabled, without `stateless()`.
 2. `GET /auth/google/callback` validates/consumes state and exchanges the authorization code server-side. Obtain Google's identity through Socialite, requiring a valid subject and verified provider email. Provider denial, expired/replayed state, or a deleted linked account fails without authenticating.
@@ -385,6 +400,8 @@ These are Phase 1 workflows. Affiliation approval, ownership claims, email verif
 
 ## 6. Inquiry flow
 
+Laravel implements and tests the flow below independently. Current frontend inquiry/contact forms simulate outcomes through local state; they do not submit messages or analytics to Laravel or an email provider.
+
 ```
 Buyer (no account)
   → Nuxt public form
@@ -413,7 +430,9 @@ The server creates one `inquiry` event per accepted provider inquiry, linked by 
 
 ## 7. Media
 
-Phase 1: Laravel stores public profile images on its `public` disk (local files) or a configured S3 disk, records `media` rows, and returns public URLs and `alt_text` through the API. For local public files, expose Laravel's `public/storage` link at `/storage/**`; the default private `local` disk is not a public media URL source. See [Laravel's public disk](https://laravel.com/framework/docs/13.x/filesystem#the-public-disk). Nuxt never writes to storage directly. Images: company logo/cover and professional photo; article images accompany Phase 2 content. Validate file type/size and use descriptive alternatives for meaningful images; decorative images get empty alternatives. Captions are required if video is introduced later.
+The API writes public profile images to `MEDIA_DISK` (default `public`). `MediaStore` requires a configured disk allowed by `directory.media.allowed_disks`, captures its name/instance once for writes and failure cleanup, and records the disk on each new `media` row. Reads and deletion use each row's stored disk, so existing files retain their storage location when the upload default changes. Keep old disk aliases available until files are copied and verified. Changing `FILESYSTEM_DISK` alone does not switch uploads. S3 requires its filesystem adapter and bucket configuration before use; no external storage was connected for this preparation. See [implementation status](DATABASE.md#98-current-implementation-follow-ups). For local public files, expose Laravel's `public/storage` link at `/storage/**`; the default private `local` disk is not a public media URL source. See [Laravel's public disk](https://laravel.com/framework/docs/13.x/filesystem#the-public-disk). Nuxt uses local upload previews during investor review. Images: company logo/cover and professional photo; article images accompany Phase 2 content. Validate file type/size and use descriptive alternatives for meaningful images; decorative images get empty alternatives. Captions are required if video is introduced later.
+
+AWS S3 and Cloudflare R2 can use the same Laravel S3 driver with separate named disks and credentials. A future `r2` disk needs its own configuration and allowlist entry; it is not enabled now. Never repoint a disk alias to another provider/bucket while old media rows reference it. Changing the upload default does not migrate files. See [future storage setup](SETUP.md#future-aws-s3-and-cloudflare-r2-storage) for activation and migration requirements; the current media schema needs no additional provider tables.
 
 For Phase 1 uploads, allow JPEG, PNG, and WebP only. Validate decoded content, byte size, and pixel dimensions; re-encode accepted images, strip metadata, and generate server-owned filenames. Reject SVG/HTML and executable content, keep unprocessed originals private, and disable script execution in public media storage. These are implementation defaults following [OWASP upload guidance](https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html).
 
@@ -422,6 +441,8 @@ Render user content as escaped text. Any supported rich text must pass a maintai
 ---
 
 ## 8. Environments
+
+The topology below describes API deployment and the future connected product. The current mock frontend needs no API base, proxy, cookie sharing, or provider secrets. Do not add those settings to connect the apps during investor review.
 
 | Concern | Phase 1 intent |
 | --- | --- |
@@ -432,12 +453,15 @@ Render user content as escaped text. Any supported rich text must pass a maintai
 | Google client | server-only client ID/secret and exact `/auth/google/callback` redirect URI |
 | Passport OAuth server | persistent signing keys; external clients/routes disabled until enabled |
 | Public media | `/storage/**` served from Laravel's public disk, or object-storage URLs |
-| Mail | transactional provider |
+| Mail | server-configured transactional provider via `MAIL_MAILER`; SMTP providers share the same application mailables |
+| Background email | database queue at launch; one supervised `mail` worker, encrypted payloads, after-commit dispatch, and bounded retries |
 | Development database | MySQL; local development uses the Homestead MySQL server |
 | Production database | MySQL on the production database server |
 | Search | MySQL queries; see [database search notes](DATABASE.md#7-search-notes-database-side) |
 
-The `development`, `homestead`, and `production` profiles must all target MySQL. Keep the MySQL version, InnoDB engine, character set/collations, SQL mode, and UTC connection time zone consistent across environments. Connection hosts, database names, and credentials are environment-specific; see [SETUP.md](SETUP.md#3-environment-pieces).
+Homestead and production target MySQL 8.0.16+ with enforced check constraints. The API's `development` example is a SQLite convenience profile and automated tests use in-memory SQLite; neither verifies MySQL-specific functional indexes or checks. Use a separate MySQL test database for production-engine verification. Keep the MySQL version, InnoDB engine, character set/collations, SQL mode, and UTC connection time zone consistent wherever MySQL is used. Connection hosts, database names, and credentials are environment-specific; see [SETUP.md](SETUP.md#3-environment-pieces).
+
+Provider credentials belong in the active server environment. A provider switch rebuilds configuration and restarts workers; pending mail resolves the new default provider when processed. Inquiries, confirmations, claim links, and invitations use the queue. Login codes and password-reset links send immediately so their availability does not depend on the background worker. Failed sends remain observable; a log-only fallback cannot count as production delivery. See [operating instructions](../../api/README.md#email-providers-and-queue-workers).
 
 Preferred deployment: one public domain; route `/api/**` and `/auth/**` to Laravel, serve `/storage/**` from Laravel's public disk when using local media, and send other paths to Nuxt. The SSR API base must resolve to Laravel from the Nuxt server.
 
@@ -466,7 +490,36 @@ Laravel does not:
 
 | Phase | Architecture change |
 | --- | --- |
-| 1 | Passport SPA cookies, Socialite Google login, email verification, OAuth infrastructure readiness; directory launch, safe inquiry routing, minimum affiliation/invitation/claim workflows, manual verification, accessibility, and raw event capture |
+| 1 frontend | Investor-facing pages, fixture-backed stores, simulated interactions, accessibility and responsive states; no Laravel connection |
+| 1 API | Standalone directory/auth/claim/inquiry/media/queue implementation and isolated tests; no dependency on Nuxt |
+| Integration gate | Only after the user explicitly requests connection: reconcile contracts, wire stores/auth/forms/uploads/events, and verify the combined product before public launch |
 | 2 | Content and curated SEO landings, richer analytics, optional event rollups, and enhanced moderation |
-| 3 | Billing provider webhooks and enforced entitlements; company plan fields already exist; individual professional plans require an explicit additional assignment model |
+| 3 | Database-driven payment method/provider/account catalogs, versioned plan prices, billing records, verified webhooks, and enforced entitlements; see the proposed schema roadmap below |
 | 4 | New resources (threads, favorites) as additional API modules |
+
+---
+
+## 11. Configurable catalogs and provider integrations (proposed extensions)
+
+The existing directory catalogs and server-configured mail transports already support changing data or a supported mail connection. Future billing needs additional tables. See [DATABASE.md section 9](DATABASE.md#9-extensibility-and-future-schema-roadmap) for the table-by-table review and Musticker comparison, and [proposed API contracts](API.md#12-future-configurable-catalogs-and-billing-proposed). These extensions are documented designs, not implemented features.
+
+| Concern | Source of truth | Change mechanism |
+| --- | --- | --- |
+| Service/industry/location choices and plan tiers | API catalog rows; separate frontend fixtures during investor review | Update and test each track independently; live catalog consumption waits for the integration gate |
+| Payment methods, availability, account mappings, prices | Proposed typed billing catalogs | Validated rows with audit history; six or more methods need no extra method-specific tables |
+| Gateway behavior, authentication, supported operations | Deployed provider adapters behind an application interface | Implement and test an adapter; database configuration cannot create integration behavior |
+| Connection secrets | Server environment or secret store | Restricted deployment/rotation; database holds references if an account catalog is needed |
+| Permission checks and state transitions | Laravel policies and domain services | Reviewed code and tests; editable labels cannot grant permissions or settle money |
+| Mail templates | Current mailables/Blade; a template-key registry if message types grow | Version-controlled content; optional editorial template versions are a later feature |
+
+The proposed payment path is: Nuxt requests eligible choices, Laravel resolves the billing target and price, reserves a gateway-independent billing request key, commits a payment attempt for an installed adapter/account, then calls the provider outside the database transaction. A verified webhook or reconciliation worker updates the invoice and entitlement once. Repeated browser requests cannot create a second operation after a provider switch. Gateways may provide their own hosted method selection. Choose the adapter by provider, not a separate implementation for every wallet using the same gateway. Database metadata contains validated supported method codes rather than executable class names or arbitrary API URLs.
+
+The first billing deployment needs scheduled reconciliation of uncertain charges/refunds, missing callbacks, and pending stored events as well as a queue worker. Refund reservations count against captured funds while pending; disputes and invoice adjustments have separate lifecycles. Sandbox and live records cannot mix, and a retired account keeps its identity for historical callbacks. Subscription expiry is checked at access time so a delayed worker cannot extend paid permissions.
+
+Payment provider switches affect new attempts. Existing subscriptions, uncertain requests, refunds, and callbacks stay attached to the account that created them. A timeout must be reconciled before retrying or offering a different provider. Email default switching has different semantics: pending transactional mail currently resolves the configured default when processed. Any future delivery ledger must retain the actual account and external message ID for every attempt, including failover attempts.
+
+Retain the current explicit queued mail, encrypted payloads, and observable failures. Musticker's inspected dynamic-mail service is useful as a template/locale registry, but its synchronous send path and SMTP-to-log failover should not replace those properties. Its payment catalogs provide a useful reference; BPO Profile's proposed design additionally separates reusable provider accounts from methods and preserves immutable purchase prices.
+
+Keep the launch plan assignment behavior until billing is implemented. Then backfill manual assignments and introduce a shared entitlement resolver, with any retained company plan columns maintained only as a compatibility projection. A future individual plan belongs to an explicit professional billing target; the current company plan named `professional` is not that model.
+
+The `basic` model safeguards, catalog-based admin assignment, insert-only seeds, flexible mock plan presentation, and allowlisted upload-disk setting are implemented as described in [DATABASE.md §9.8](DATABASE.md#98-current-implementation-follow-ups). Local frontend fixtures are intentional for the current review track; `/pricing?state=expanded` demonstrates six tiers without live requests. Replacing fixture sources with live catalogs remains deferred integration work. Existing mail switches remain configuration-based; future purpose-specific routing and failover attempt history need new resolver/instrumentation code.

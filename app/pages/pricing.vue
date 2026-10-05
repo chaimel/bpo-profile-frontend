@@ -1,11 +1,13 @@
 <template>
 	<div>
-		<Pricing />
+		<Pricing :expanded="route.query.state === 'expanded'" />
 	</div>
 </template>
 
 <script setup lang="ts">
 import Pricing from '@/components/features/pricing/Index.vue'
+
+const route = useRoute()
 
 useHead({
 	title: 'Pricing and listing plans',

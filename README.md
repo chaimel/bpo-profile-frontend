@@ -4,6 +4,10 @@ Nuxt 4 + Vue 3 + TypeScript + SCSS + Pinia. The UI is **static**: every screen r
 Pinia stores that answer from typed seed data shaped exactly like the Laravel API payloads in
 `docs/API.md`. No requests are made yet.
 
+Keep this frontend disconnected during Phase 1 investor review. Revise screens, local fixtures,
+and simulated flows here while the API is developed/tested separately. Wiring requires an
+explicit instruction to connect; it is not a follow-up to this documentation review.
+
 Planning documents live in `docs/` (product plan, architecture, API, database, setup).
 
 ## Run
@@ -68,6 +72,10 @@ Google sign-in is a Laravel browser redirect (`/auth/google/redirect` → Google
 previews a first-time account, which continues to `/onboarding`.
 
 ## Wiring the API later
+
+The independent Phase 1 catalog changes are implemented: pricing and admin plan choices read the local catalog, and unknown plan codes have display fallbacks. Open `/pricing?state=expanded` for a six-tier mock preview; the default pricing page still shows the three initial tiers. Missing feature comparisons say `Ask us` rather than promise benefits. Run `npm run test:plans` with Node 22.18+ or Node 24+ to check these behaviors using Node's built-in test runner.
+
+This section is future guidance only. Do not apply it during the current investor-review track.
 
 - Every API-shaped read goes through a store (`app/stores/README.md`). Wiring the API means
   changing the stores' members to call the typed client — pages and components already use the

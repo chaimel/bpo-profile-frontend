@@ -10,23 +10,20 @@
 
 <script setup lang="ts">
 import { planPresentations } from '~/data/features/pricing'
-import type { PlanPresentation } from '~/types/features/content'
+import type { Plan as CatalogPlan } from '~/types/features/directory'
+import { presentPlan } from '~/utils/plans'
 import Plan from './Plan.vue'
 
-const { plans } = useCatalogStore()
-
-// Active plans from the catalog, in its sort order (GET /api/plans).
-const visible_plans: PlanPresentation[] = [...plans]
-	.filter(plan => plan.is_active)
-	.sort((a, b) => a.sort_order - b.sort_order)
-	.map(plan => planPresentations.find(presentation => presentation.slug === plan.slug))
-	.filter((presentation): presentation is PlanPresentation => Boolean(presentation))
+const props = defineProps<{ plans: CatalogPlan[] }>()
+const visible_plans = computed(() => props.plans.map(plan => presentPlan(plan, planPresentations)))
 </script>
 
 <style lang="scss" scoped>
 .plans {
 	&__con {
-		display: flex;
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+		row-gap: 24px;
 		align-items: stretch;
 		padding: 16px 0 96px;
 	}
@@ -35,7 +32,7 @@ const visible_plans: PlanPresentation[] = [...plans]
 @media only screen and (max-width: 1024px) {
 	.plans {
 		&__con {
-			flex-direction: column;
+			grid-template-columns: 1fr;
 			padding-bottom: 72px;
 		}
 	}

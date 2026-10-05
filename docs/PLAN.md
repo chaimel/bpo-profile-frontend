@@ -7,6 +7,8 @@
 
 This plan is derived from [BPO Profile.pdf](<BPO Profile.pdf>). PDF page references below use the PDF's 1-based page numbers. It is planning-only. It does not include scaffolding, install commands, or application code. Product requirements come from the brief; the stack, anonymous-buyer flow, single-company affiliation, and delivery phases are implementation decisions documented here.
 
+**Current delivery boundary:** Phase 1 frontend and Phase 1 API are independent work tracks. Keep Nuxt on typed local fixtures and simulated actions for investor review; develop and test Laravel separately. Do not connect the frontend to Laravel, live authentication, email, uploads, or analytics. Integration begins only after an explicit instruction to connect. The public-launch requirements below describe the eventual connected product, not permission to wire it now.
+
 ---
 
 ## 1. Product goal
@@ -79,7 +81,7 @@ Every public page should push the next action: search → profile → sales team
 
 ## 4. Product scope by phase
 
-Phase 1 is the public directory launch, including the minimum claim and verification workflows. Phase 2 adds content and growth features; Phase 3 adds billing and paid individual listings. Features below are Phase 1 unless explicitly tagged otherwise. See section 8 for release boundaries.
+Phase 1 defines the public directory launch scope, including the minimum claim and verification workflows. For current delivery, its frontend and API are built and reviewed independently; connecting them is deferred. Phase 2 adds content and growth features; Phase 3 adds billing and paid individual listings. Features below are Phase 1 unless explicitly tagged otherwise. See section 8 for release boundaries.
 
 ### 4.1 Public discovery — Phase 1, with later additions
 
@@ -171,6 +173,8 @@ No decorative badges. Manual company/professional verification and basic company
 ### 4.7 Monetization — Phase 1 model, Phase 3 billing
 
 Freemium company listing plans exist in data from Phase 1, with admin-managed assignment and a basic pricing comparison. The table describes intended packages across phases, not a promise that every benefit is available at launch. Label unavailable benefits as forthcoming. API enforcement of paid entitlements and checkout are Phase 3.
+
+The package names below are initial choices, not a permanent limit on tier count. The [Phase 1 implementation status](DATABASE.md#98-current-implementation-follow-ups) covers each independent track: local frontend plan cards/options support extra tiers and fallback content, while the API protects the default company plan, resolves additional active plan codes, and preserves operator catalog edits during seeding. Live operator-driven frontend catalogs wait for the separate integration step.
 
 | Plan | Who | Intended package / delivery |
 | --- | --- | --- |
@@ -304,7 +308,7 @@ Organic growth also includes shareable company/professional profile links and, a
 
 ### Phase 1 — Directory MVP and public launch
 
-Ship a usable public directory and the minimum write-path:
+The eventual launch needs the following product capabilities. Current work delivers their frontend previews and API behavior separately:
 
 - Passport browser-cookie authentication, password or Google sign-in followed by an emailed code, and first-login email verification (company admin + sales professional + platform admin, plus accounts awaiting claim/invitation onboarding)
 - Taxonomies and locations
@@ -319,7 +323,21 @@ Ship a usable public directory and the minimum write-path:
 - Basic analytics events and counts, including search impressions and accepted provider inquiries
 - Basic pricing comparison and manual company-plan assignment
 
-This is the first public launch and includes the brief's launch trust features (PDF p. 25). Later automation can simplify their administration, but must not delay these minimum workflows.
+These are the first public launch requirements, including the brief's trust features (PDF p. 25). A mock frontend review and an independently tested API do not establish a connected production launch. Later automation can simplify administration without changing the separation of the current work tracks.
+
+#### Phase 1 frontend — investor review
+
+Keep the current Pinia stores backed by local fixtures. Build and revise layouts, copy, forms, navigation, filters, pricing presentation, and loading/empty/error/success previews without a running Laravel server. Auth roles, claim/invitation results, inquiries, upload previews, and analytics remain simulations; no real account, message, file upload, or event is submitted. Keep demo behavior identified in the existing investor guide.
+
+Local data may be shaped like the documented API without fetching it. A new plan or term can be demonstrated by changing fixtures and its presentation independently of API seeders. UI-only feedback does not require a database migration. Record changes to business meaning or payload shape in the contract for a separate API review.
+
+#### Phase 1 API — standalone implementation
+
+Build and verify the directory schema, catalog reads, validation, authorization, auth/session lifecycle, inquiries, manual plans, image compression, queue/retry behavior, and provider configuration using API tests and isolated test data. Frontend availability is not a prerequisite. Keep mail/OAuth/storage providers faked or local during automated verification; do not send real mail or provision external integrations as part of this documentation or investor-review work.
+
+#### Integration — deferred until requested
+
+Only an explicit instruction to connect starts API-client wiring, live session/CSRF handling, SSR API requests, real form submissions, uploads, event delivery, or proxy/CORS setup between the apps. Agree on the reviewed screen/payload contract first, then validate connected flows before a public production launch. Investor feedback or passing the two independent reviews does not automatically authorize this step.
 
 ### Phase 2 — Content, growth, and enhanced analytics
 
@@ -334,6 +352,8 @@ This is the first public launch and includes the brief's launch trust features (
 
 - Plan entitlements enforced in API
 - Checkout and billing
+- Configurable payment methods/providers/accounts with no five-method limit, versioned prices, durable request deduplication, and server-side payment confirmation; follow the [schema roadmap](DATABASE.md#93-payment-method-catalogs-proposed-phase-3)
+- Refund/dispute history, missing-callback reconciliation, and explicit subscription renewal/cancellation/downgrade behavior before enabling the corresponding payment capabilities
 - Premium slots on home and directories
 - Plan-gated seats, media, and analytics
 - Optional paid individual Pro listing, after its assignment and entitlement model is defined
@@ -369,7 +389,22 @@ Out of Phase 1 even if useful:
 - Buyer accounts
 - Paid individual Pro listings
 
-Phase 1 acceptance checks:
+### Separate Phase 1 change checklist
+
+Catalog/plan rendering, default-plan protection, insert-only seeds, and configured media storage are implemented within the separate tracks below. The connection column remains deferred.
+
+| Area | Frontend track now | API track independently | Deferred connection work |
+| --- | --- | --- | --- |
+| Catalogs and plans | Local catalog labels/options, fallback plan cards/comparisons, and six-tier `/pricing?state=expanded` preview implemented | Protected `basic` default, active company slug/ID assignment, insert-only catalog seeds, and explicit local/testing demo seeds implemented | Replace store data sources with live catalog requests and add cache refresh |
+| Investor revisions | Update layouts/copy, fixture values, and preview states; keep components behind their existing stores | Change API rules only when the domain/contract requires it | Reconcile approved payload differences before wiring |
+| Authentication and access | Preview account roles, code-entry, expired-session, claim, and invitation states locally | Verify real policies, session revocation, token expiry, and intended-recipient checks in isolated tests | Browser cookie/CSRF flows and Google redirects from the real UI |
+| Inquiries and email | Simulate validation/success/failure; show fixture inbox and delivery states | Verify persistence, recipient routing, encrypted queued mail, retries, and immediate login/reset mail with fakes | Submit real forms and surface actual request outcomes |
+| Images | Preview selected local files and UI error states without uploading | WebP compression plus allowlisted `MEDIA_DISK`, stored row disks, and failure/replacement cleanup implemented | Multipart upload and API-returned URLs |
+| Analytics | Render fixture charts/counts and local interaction previews | Verify server aggregation and event deduplication | Send browser events to the API |
+
+Frontend acceptance: the review build works with Laravel stopped; UI interactions make no requests to the application API, authentication, upload, or event endpoints. API acceptance: automated checks run without Nuxt and use isolated database/provider fixtures. Check contracts by comparing documented fields and test fixtures; do not introduce a live dependency for this comparison.
+
+The following remain **API verification and eventual connected-launch acceptance checks**. Apply backend items to isolated API tests now and frontend presentation items to mock previews. Browser-to-API end-to-end checks wait for the deferred integration step:
 
 - Every account type must complete password or Google sign-in and the emailed-code check before accessing protected routes. Registration and either initial sign-in step alone grant no authenticated session; first successful code verification marks the email verified without awarding a profile verification badge.
 - Laravel session and Passport cookies are `HttpOnly` and `Secure` in production; the readable CSRF cookie and header protect browser writes and are also required for protected API `GET` requests. Tokens never enter localStorage/sessionStorage or JSON response payloads. The post-verification Passport bootstrap requires the live authenticated web session.
@@ -394,7 +429,7 @@ These are implementation defaults, not requirements prescribed by the PDF. Chang
 2. **A sales professional references one company.** Self-registration requires company and job title, with affiliation pending until approved; multi-company representation is later.
 3. **Company admin can invite team members by email.** Professionals can also register and request affiliation.
 4. **Unclaimed companies can exist** so the directory can be seeded. Only claimed profiles are fully editable by the company.
-5. **Nuxt/Vue/TypeScript, Laravel/Passport with Socialite for Google, and MySQL** are the chosen stack. Development and production both use MySQL; local development uses Homestead's MySQL server. Passport is selected now for future OAuth readiness; confirm exact version compatibility when implementation begins.
+5. **Nuxt/Vue/TypeScript, Laravel/Passport with Socialite for Google, and MySQL** are the chosen stack. Homestead and production target MySQL; the development example and automated tests also use SQLite, which does not validate MySQL-specific constraints. The apps remain disconnected during their independent Phase 1 work. Passport is selected for future OAuth readiness; verify installed versions before dependency changes.
 6. **One inquiry table** covers contact, question, and quote-request via a `type` field.
 7. **Soft deletes** on users, companies, professionals, inquiries, articles, and taxonomy terms.
 8. **English-first UI.** Languages listed on profiles are capabilities, not a translated product in Phase 1.
@@ -421,7 +456,7 @@ These defaults are treated as decided so database and API work can proceed; they
 1. A sales professional belongs to **one company** at launch.
 2. Buyers stay **anonymous inquirers** in Phase 1. No buyer accounts.
 3. **No checkout in Phase 1.** Plans exist as fields. Platform admins apply upgrades manually until Phase 3 billing.
-4. **Phase 1 is public launch.** Company claims, affiliation approval, completeness, and manual verification ship together.
+4. **Phase 1 defines the public launch scope.** Its frontend review and standalone API work are separate current deliverables. Company claims, affiliation approval, completeness, and manual verification must work together only after explicitly requested integration and before public production launch.
 5. **Password or Google sign-in, followed by an emailed code for all account types.** Google uses Socialite; Passport supplies browser-cookie API authentication after the code succeeds, with a live Laravel session check. First-login email verification is distinct from company/professional identity review.
 6. **Passport now, delegated OAuth access later.** Passport's migrations and keys are planned for launch. Exposing external clients, scopes, consent, and authorization/token issuance is separate implementation work; Google login is the app acting as Google's client.
 

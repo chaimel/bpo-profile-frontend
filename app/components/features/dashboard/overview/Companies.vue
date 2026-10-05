@@ -12,7 +12,7 @@
 					<div class="companies__identity">
 						<MHeading variant="3" size="4" weight="semi-bold" class="companies__name">{{ entry.company.name }}</MHeading>
 						<MText size="small" color="--text-secondary" class="companies__meta">
-							{{ companyRoleLabels[entry.membership.role] }} · {{ planLabels[entry.company.plan.slug] }} plan
+							{{ companyRoleLabels[entry.membership.role] }} · {{ planLabel(entry.company.plan.slug) }} plan
 						</MText>
 					</div>
 
@@ -63,8 +63,10 @@ import MStatusBadge from '~/components/core/status/MStatusBadge.vue'
 import MTrustBadges from '~/components/core/trust/MTrustBadges.vue'
 import type { MIconName } from '~/types/base/ui'
 import { pluralize } from '~/utils/format'
-import { companyRoleLabels, planLabels } from '~/utils/labels'
+import { companyRoleLabels } from '~/utils/labels'
 import type { CompanyDashboard } from '~/types/features/dashboard'
+
+const { planLabel } = useCatalogStore()
 
 const { profileCompleteThreshold } = useDashboardStore()
 

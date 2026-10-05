@@ -10,7 +10,8 @@ import {
 	subtreeIds,
 	toLocationRef,
 } from '~/data/features/locations'
-import { plans } from '~/data/features/pricing'
+import { expandedPlans, plans } from '~/data/features/pricing'
+import { getPlanLabel } from '~/utils/plans'
 import {
 	capabilities,
 	findTaxonomy,
@@ -44,4 +45,6 @@ export const useCatalogStore = defineStore('catalog', () => ({
 	toLocationRef,
 	timezoneOptions,
 	plans,
+	expandedPlans,
+	planLabel: (slug: string) => getPlanLabel(plans, slug),
 }))

@@ -33,7 +33,7 @@
 			<div class="glance__fact">
 				<dt class="glance__label">Plan</dt>
 				<dd class="glance__value">
-					{{ planLabels[props.company.plan] }}
+					{{ planLabel(props.company.plan) }}
 					<span class="glance__when">
 						{{ props.company.plan_expires_at ? `until ${formatDate(props.company.plan_expires_at)}` : 'no expiry' }}
 					</span>
@@ -60,9 +60,10 @@
 <script setup lang="ts">
 import MStatusBadge from '~/components/core/status/MStatusBadge.vue'
 import { formatDate } from '~/utils/format'
-import { planLabels } from '~/utils/labels'
 import YesNo from '../shared/YesNo.vue'
 import type { AdminCompanyDetail } from '~/types/features/admin'
+
+const { planLabel } = useCatalogStore()
 
 // The listing's state at a glance, above the editable sections.
 interface Props {

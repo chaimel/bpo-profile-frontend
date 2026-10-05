@@ -51,6 +51,18 @@ const plans: Plan[] = [
 	},
 ]
 
+// Investor preview only: /pricing?state=expanded. No additional packages are offered by default.
+export const expandedPlans: Plan[] = [
+	...plans,
+	...['Growth', 'Enterprise', 'Custom'].map((name, index) => ({
+		...plans[0]!,
+		id: index + 4,
+		slug: name.toLowerCase(),
+		name,
+		sort_order: index + 4,
+	})),
+]
+
 const pricingIntro = {
 	title: 'Listing plans for BPO companies',
 	lede: 'Start with a free Basic listing and get in front of businesses looking for outsourcing partners. Professional and Premium add more as those features launch — and no plan can buy a higher search ranking.',

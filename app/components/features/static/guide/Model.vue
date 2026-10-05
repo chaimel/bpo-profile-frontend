@@ -21,7 +21,7 @@
 					<!-- the pricing page's own plans, so the two never disagree -->
 					<ol class="model__plans">
 						<li
-							v-for="plan in planPresentations"
+							v-for="plan in visible_plans"
 							:key="plan.slug"
 							:class="['model__plan', { 'model__plan--free': plan.highlighted }]"
 						>
@@ -50,6 +50,10 @@
 <script setup lang="ts">
 import { modelIntro, modelRules } from '~/data/features/guide'
 import { planPresentations } from '~/data/features/pricing'
+import { activeCompanyPlans, presentPlan } from '~/utils/plans'
+
+const catalog = useCatalogStore()
+const visible_plans = computed(() => activeCompanyPlans(catalog.plans).map(plan => presentPlan(plan, planPresentations)))
 </script>
 
 <style lang="scss" scoped>

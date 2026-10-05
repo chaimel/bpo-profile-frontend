@@ -159,7 +159,7 @@ interface ProfessionalProfile extends Omit<ProfessionalCard, 'company'> {
 
 // --- Plans ----------------------------------------------------
 
-type PlanSlug = 'basic' | 'professional' | 'premium'
+type PlanSlug = string
 type AnalyticsLevel = 'none' | 'basic' | 'advanced'
 
 interface Plan {

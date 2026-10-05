@@ -43,9 +43,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import MFormSection from '~/components/core/form/MFormSection.vue'
-import type { PlanSlug } from '~/types/features/directory'
+import type { SelectOption } from '~/types/base/ui'
 import { formatDate } from '~/utils/format'
-import { planLabels, toOptions } from '~/utils/labels'
+import { activeCompanyPlans } from '~/utils/plans'
 import type { AdminCompanyDetail } from '~/types/features/admin'
 
 // Phase 1 plan assignment: an active company-audience plan and an
@@ -60,7 +60,15 @@ const emit = defineEmits<{
 	(_e: 'update', _changes: Partial<AdminCompanyDetail>, _message: string): void
 }>()
 
-const plan_options = toOptions(planLabels)
+const catalog = useCatalogStore()
+const active_plans = computed(() => activeCompanyPlans(catalog.plans))
+const plan_options = computed<SelectOption[]>(() => {
+	const options: SelectOption[] = active_plans.value.map(plan => ({ value: plan.slug, label: plan.name }))
+	if (!options.some(option => option.value === props.company.plan)) {
+		options.unshift({ value: props.company.plan, label: `${catalog.planLabel(props.company.plan)} (unavailable)`, disabled: true })
+	}
+	return options
+})
 
 const plan = ref<string>(props.company.plan)
 const expires = ref(toDateInput(props.company.plan_expires_at))
@@ -81,19 +89,15 @@ function toDateInput(iso: string | null): string {
 	return iso ? iso.slice(0, 10) : ''
 }
 
-function isPlan(value: string): value is PlanSlug {
-	return value in planLabels
-}
-
 function save() {
-	if (!isPlan(plan.value)) return
+	if (plan.value !== props.company.plan && !active_plans.value.some(item => item.slug === plan.value)) return
 	const next = plan.value
 	const plan_expires_at = expires.value ? `${expires.value}T00:00:00Z` : null
 
 	emit(
 		'update',
-		{ plan: next, plan_expires_at },
-		`Plan saved: ${planLabels[next]}, ${plan_expires_at ? `until ${formatDate(plan_expires_at)}` : 'with no expiry'}.`,
+		{ ...(next !== props.company.plan ? { plan: next } : {}), plan_expires_at },
+		`Plan saved: ${catalog.planLabel(next)}, ${plan_expires_at ? `until ${formatDate(plan_expires_at)}` : 'with no expiry'}.`,
 	)
 }
 </script>

@@ -32,7 +32,7 @@
 			</template>
 
 			<template #cell-plan="{ row }">
-				{{ planLabels[row.plan] }}
+				{{ planLabel(row.plan) }}
 			</template>
 
 			<template #cell-completeness="{ row }">
@@ -73,9 +73,10 @@ import MStatusBadge from '~/components/core/status/MStatusBadge.vue'
 import type { DropdownItem, TableColumn } from '~/types/base/ui'
 import type { AdminCompanyRow } from '~/types/features/admin'
 import { formatDate } from '~/utils/format'
-import { planLabels } from '~/utils/labels'
 import RowMenu from '../shared/RowMenu.vue'
 import YesNo from '../shared/YesNo.vue'
+
+const { planLabel } = useCatalogStore()
 
 interface Props {
 	rows: AdminCompanyRow[]

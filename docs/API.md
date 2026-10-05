@@ -10,6 +10,8 @@ Errors use Laravel-style validation (`422` with `errors` object) and `401` / `40
 
 This contract implements [BPO Profile.pdf](BPO%20Profile.pdf); framework, route names, and workflow details are implementation decisions. Basic company claims and verification are Phase 1 launch features (PDF page 25). The proposed delivery plan puts editorial resources/curated landings in Phase 2 and billing/individual professional packages in Phase 3; these dates are not prescribed by the PDF. Both company and professional paid packages remain in the product direction (PDF p. 4). Untagged endpoints are Phase 1 under that proposed schedule.
 
+**Current use of this contract:** develop and test Laravel independently, and use its documented shapes as a reference for frontend fixtures. Nuxt remains a disconnected investor preview. Routes, browser auth flows, and SSR details here do not authorize live frontend requests; connect them only after the user explicitly asks. UI-only revisions can stay in the frontend; changes to payload meaning or server rules need a documented contract review before either side relies on them.
+
 ---
 
 ## 1. Auth
@@ -41,7 +43,7 @@ Follow the [Passport browser auth flow](ARCHITECTURE.md#5-auth-flow): initialize
 
 ### Password and email-code login
 
-The current proposed policy applies the email-code step to every fresh provider/admin sign-in, including Google. This frequency is an implementation assumption, not specified by the PDF or explicitly requested by the user; confirm it before implementing this contract. Password registration returns `201` with `{ "next_action": "login" }`, leaves `email_verified_at = null`, and creates no authenticated session. The first successful code check verifies the current email. There are no separate `/api/email/verify/...` or verification-notification endpoints in this contract.
+The current standalone API applies the email-code step to every fresh provider/admin sign-in, including Google. This describes existing implementation behavior, not a frequency prescribed by the PDF; changing that policy is a separate product decision. The disconnected frontend only previews its states. Password registration returns `201` with `{ "next_action": "login" }`, leaves `email_verified_at = null`, and creates no authenticated session. The first successful code check verifies the current email. There are no separate `/api/email/verify/...` or verification-notification endpoints in this contract.
 
 `POST /api/login` takes `email` and `password`. Valid credentials start a pending challenge and return `202`:
 
@@ -160,6 +162,8 @@ Used by SSR pages. Taxonomies and locations require `is_active = true` and `dele
 | GET | `/api/technologies` | Technology list |
 | GET | `/api/locations` | Location tree or filtered list |
 | GET | `/api/plans` | Public plan comparison |
+
+The API returns catalog rows without a fixed number of terms or plans. The frontend intentionally uses independent local fixtures during investor review, so changing an API row does not change the preview. Flexible rendering is implemented: `/pricing?state=expanded` shows six mock tiers, with fallback descriptions and `Ask us` for unspecified comparisons. Admin assignment accepts any active company plan code (maximum 50 characters) or ID; when both are supplied they must identify the same plan. No new endpoint or schema is needed for another tier. Live catalog consumption waits for the integration gate. See [implementation status](DATABASE.md#98-current-implementation-follow-ups). Existing company size/work-model filters remain fixed codes. Optional future catalogs and the proposed payment method contract are covered in [section 12](#12-future-configurable-catalogs-and-billing-proposed).
 
 `GET /api/locations?type=country`  
 `GET /api/locations?parent_id=63` for children.
@@ -284,6 +288,8 @@ Public GETs have no analytics side effects. Browser instrumentation records actu
 ---
 
 ## 4. Public inquiries
+
+Inquiry notification and confirmation emails are queued after persistence. A successful response confirms the saved inquiry, not provider acceptance or inbox delivery. Background delivery retries provider errors, while dispatch failures are reported without removing the saved inquiry. Email provider selection is server-side configuration and does not add fields to these endpoints. Claims and invitations use the same queued delivery policy; login codes and password-reset links remain immediate. See [email operations](../../api/README.md#email-providers-and-queue-workers).
 
 | Method | Path | Auth |
 | --- | --- | --- |
@@ -491,6 +497,8 @@ Prefix `/api/admin`. Requires an authenticated, email-verified user with `platfo
 
 `verified` is the admin request boolean; the server sets or clears `verified_at` after identity review. Affiliation approval alone never sets that badge. `featured_until` is a Phase 2 field; company-plan assignment is manual in Phase 1 and must use an active company-audience plan. Platform admins granting ownership use the reviewed claim workflow above. Creation endpoints must honor the required database fields and defaults; admin-created companies remain unclaimed until ownership is accepted.
 
+Use `plan_id` for assignment. The current optional `plan` slug shortcut accepts only `basic`, `professional`, or `premium`; it must be revised with catalog-driven validation before arbitrary slugs are supported. Both registration and admin company creation currently require an active company plan with slug `basic`.
+
 Deleting a company hides its professionals, removes company memberships, rejects its pending/approved claims with a lifecycle note, and revokes unused invitations/claim tokens. Restoring it does not restore permissions or published status; reset `claimed_at` and require a new claim and ownership review. Deleting a user revokes their sessions, removes memberships, rejects that user's pending/approved claims, and revokes their unused onboarding tokens; any linked public roster routes new inquiries to the company fallback. Preserve prior claim-review evidence during lifecycle rejection as specified in [DATABASE.md](DATABASE.md#416-company_claims). If the last accepted owner is removed, clear `claimed_at`; a later claimant needs a new request and review. Never silently recreate deleted relationships or reactivate old claims on restore.
 
 Admin company patch example:
@@ -542,3 +550,70 @@ Unpublished profiles return `404` on public show, not `403`, so slugs cannot be 
 ## 11. Versioning
 
 No `/v1` prefix at launch. Breaking changes wait until an external client exists. Nuxt is the only API consumer in Phase 1. Passport is prepared for future OAuth clients; Google is an identity provider, not a consumer of the directory API.
+
+---
+
+## 12. Future configurable catalogs and billing (proposed)
+
+This section is a design for later implementation, not an inventory of available routes. No checkout, payment-provider administration, or mail-provider administration endpoint is added by this documentation update. The proposed tables and implementation order are in [DATABASE.md section 9](DATABASE.md#9-extensibility-and-future-schema-roadmap).
+
+### Catalog growth
+
+Existing taxonomy, location, and plan endpoints return database rows and can be verified in standalone API tests. Stable codes/IDs identify choices; display labels, ordering, and active state may change. Existing taxonomy families and authorization rules remain a code-owned allowlist. A new service term is data; a new taxonomy family or permission requires application support. These API properties do not replace the frontend's current fixture source.
+
+Future plan catalog administration needs explicit admin list/create/update routes, protection of the configured default company plan, and public presentation fields or a reliable frontend fallback. Retire plans for new assignments without rewriting existing purchases. Never permit a plan audience to change after assignments/prices reference it. Refresh public catalog/SSR caches after edits and test an added tier that has no static frontend presentation.
+
+If editable company sizes and work models are introduced, add `GET /api/company-sizes` and `GET /api/work-models` alongside dedicated admin catalog routes. Preserve current filter codes while backfilling foreign keys. After integration is requested, forms use the API catalog and server validation uses that same active catalog. Until then, preview forms use matching mock choices independently. Retired choices remain readable on historical profiles but cannot be newly selected.
+
+### Proposed payment endpoints
+
+These contracts concern purchases of BPO Profile plans; they do not turn public directory inquiries into buyer checkout accounts.
+
+| Method | Proposed path | Purpose and authorization |
+| --- | --- | --- |
+| GET | `/api/billing/payment-options` | Authenticated billing owner requests eligible options for a server-resolved price, target, country, and currency; environment and restricted-option access are server-controlled |
+| POST | `/api/billing/checkout-sessions` | Authorized company owner or the owner of an eligible individual professional package starts a purchase; requires `Idempotency-Key` |
+| GET | `/api/billing/payments/{publicId}` | Read only the caller's authorized payment status; the return page polls this rather than declaring success |
+| GET | `/api/billing/invoices` | List invoices within the authorized billing target |
+| POST | `/api/admin/payments/{publicId}/refunds` | Platform-admin refund action with amount/reason, captured-payment checks, audit record, and `Idempotency-Key` |
+| POST | `/api/admin/payments/{publicId}/confirm-transfer` | Only for an implemented manual bank-transfer method; platform admin records verified bank evidence and settles once |
+| POST | `/api/webhooks/payments/{accountCode}` | Provider callback authenticated by its signature and account configuration; no browser-session requirement |
+| GET / POST / PATCH | `/api/admin/payment-methods`, `/api/admin/payment-options` and their item routes | Platform-admin catalog changes with validation and audit history |
+
+For a company purchase, require accepted owner membership and a non-deleted company. For an individual purchase, require the signed-in user's eligible professional profile and a plan with the matching audience; this capability is unavailable until individual packages are implemented. Recheck authorization on every request, including idempotent replays. New provider accounts and credentials remain deployment-managed unless a separately authorized admin connection interface is built. Payment public IDs are opaque identifiers, not access grants. Paginate billing history and scope it to the authorized billing account; a foreign payment/invoice identifier returns `404`.
+
+An illustrative options response is:
+
+```json
+{
+  "data": [
+    {
+      "id": "option_public_identifier",
+      "method_code": "card",
+      "label": "Credit or debit card",
+      "currency": "PHP",
+      "supports_recurring": false
+    }
+  ]
+}
+```
+
+This example does not promise PHP, card, or recurring support from a selected gateway. The response may contain more than five options and exposes neither credentials nor internal provider configuration. If a hosted checkout owns method selection, return its supported handoff contract rather than inventing an application option for every hidden provider choice.
+
+Checkout input identifies the billing target, active `plan_price_id`, and selected option where applicable. The API computes prices, discounts/taxes, currency, and eligibility; it never trusts browser totals, account IDs, or a `paid` flag. Revalidate the option when starting the request. Reusing an idempotency key with the same canonical input returns the existing operation; different input with the same key returns `409`. A `201`/`202` checkout response indicates creation/processing, not successful payment. The adapter returns a validated provider-hosted redirect or client action as appropriate, with locally selected return URLs.
+
+Reserve the request key by billing account, server environment, and operation before provider selection. The proposed `billing_requests` row binds it to the canonical input and local payment/invoice; a provider switch cannot make the same browser request charge again. Concurrent requests for the same invoice serialize even with different keys: return the existing pending operation for equivalent input or a conflict, rather than start another uncertain charge. Do not replay a provider operation after its retry-key window without reconciliation. Refund requests reserve pending amounts under a captured-payment lock and remain pending after an ambiguous timeout.
+
+Only live captured/settled payments can grant live entitlements; neither sandbox results nor an authorization-only state qualifies. A test/pilot visibility allowlist does not relax that rule. Receipt uploads and browser return parameters are not settlement evidence. Financial adjustments, refund state, and disputes are exposed separately from original payment success.
+
+Webhooks verify the raw body with the account's secret, record the event durably, and then enqueue processing. Valid duplicate events return success without repeating settlement or entitlement grants. Only provider-authenticated events or server-to-server reconciliation can confirm a payment. Signature failures fail before state changes; older events cannot overwrite a newer settled state. Any CSRF exemption applies only to the signed webhook route, never ordinary billing or browser routes. In-flight attempts, refunds, and renewals retain their original provider account after a default-provider change.
+
+Accept a valid early event into pending storage when the initiating API response has not yet been correlated. A scheduled reconciliation worker recovers missing callbacks and pending/unknown charges or refunds. If durable event storage fails, return an error so the provider can retry. These workers require monitoring and bounded retries; silently leaving an operation pending is not a recovery policy. Verified late settlement after a local expiry needs an explicit fulfillment/refund review rule.
+
+### Mail and administrative settings
+
+Mail-provider switching is currently a deployment operation described in the [API README](../../api/README.md#changing-providers-and-handling-failures). It does not add a provider selector to inquiry/login payloads. If operator-managed mail accounts or routes are introduced, require platform-admin authorization, masked credential references, allowlisted installed drivers, audit history, and explicit configuration cache/worker refresh. Never return connection secrets through public catalogs.
+
+Use separate verified mail-webhook routes and delivery/event tables if delivery tracking is built. A marketing unsubscribe updates topic-specific consent/suppression records; it must not delete the user's account or an inquiry. Payment state, inquiry state, and email-delivery state remain separate contracts.
+
+Mail-delivery records identify one intended recipient per logical message, including recipients without user accounts. Store early verified delivery events for later provider-message correlation. A future per-purpose route table requires changing the current queued-mail resolver; it cannot be enabled just by inserting rows. The existing default-provider switch remains the supported behavior.

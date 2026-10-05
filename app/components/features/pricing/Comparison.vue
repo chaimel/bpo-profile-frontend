@@ -1,5 +1,5 @@
 <template>
-	<div class="comparison">
+	<div class="comparison" :style="{ '--plan-count': props.plans.length }">
 		<div class="wrapper">
 			<div class="comparison__con">
 				<div class="comparison__head">
@@ -13,23 +13,23 @@
 				<div class="comparison__scroll" role="region" aria-labelledby="compare-plans-title" tabindex="0">
 					<table class="comparison__table" role="table">
 						<caption class="sr-only">
-							Listing plan features by plan: included, coming later, or not included
+							Listing plan features by plan: included, coming later, not included, or ask us
 						</caption>
 						<thead role="rowgroup">
 							<tr role="row">
 								<th scope="col" role="columnheader" class="comparison__col comparison__col--feature">Feature</th>
-								<th v-for="slug in plan_slugs" :key="slug" scope="col" role="columnheader" class="comparison__col">
-									{{ planLabels[slug] }}
+								<th v-for="plan in props.plans" :key="plan.slug" scope="col" role="columnheader" class="comparison__col">
+									{{ plan.name }}
 								</th>
 							</tr>
 						</thead>
 						<tbody role="rowgroup">
 							<tr v-for="row in planComparison" :key="row.label" role="row" class="comparison__row">
 								<th scope="row" role="rowheader" class="comparison__feature">{{ row.label }}</th>
-								<td v-for="slug in plan_slugs" :key="slug" role="cell" class="comparison__cell">
-									<span :class="['comparison__value', `comparison__value--${row.values[slug]}`]">
-										<MIcon :name="value_meta[row.values[slug]].icon" size="sm" />
-										{{ value_meta[row.values[slug]].label }}
+								<td v-for="plan in props.plans" :key="plan.slug" role="cell" class="comparison__cell">
+									<span :class="['comparison__value', `comparison__value--${comparisonValue(row, plan.slug)}`]">
+										<MIcon :name="value_meta[comparisonValue(row, plan.slug)].icon" size="sm" />
+										{{ value_meta[comparisonValue(row, plan.slug)].label }}
 									</span>
 								</td>
 							</tr>
@@ -50,22 +50,17 @@
 import { comparisonNote, planComparison } from '~/data/features/pricing'
 import type { MIconName } from '~/types/base/ui'
 import type { ComparisonValue } from '~/types/features/content'
-import type { PlanSlug } from '~/types/features/directory'
-import { planLabels } from '~/utils/labels'
+import type { Plan } from '~/types/features/directory'
+import { comparisonValue } from '~/utils/plans'
 
-const { plans } = useCatalogStore()
-
-// Columns follow the plan catalog's order (GET /api/plans).
-const plan_slugs: PlanSlug[] = [...plans]
-	.filter(plan => plan.is_active)
-	.sort((a, b) => a.sort_order - b.sort_order)
-	.map(plan => plan.slug)
+const props = defineProps<{ plans: Plan[] }>()
 
 // Always a word and an icon — never color alone.
 const value_meta: Record<ComparisonValue, { label: string, icon: MIconName }> = {
 	yes: { label: 'Included', icon: 'light-check-circle' },
 	later: { label: 'Coming later', icon: 'light-alarm-clock' },
 	no: { label: 'Not included', icon: 'light-minus' },
+	unspecified: { label: 'Ask us', icon: 'light-info-circle' },
 }
 </script>
 
@@ -95,14 +90,14 @@ const value_meta: Record<ComparisonValue, { label: string, icon: MIconName }> = 
 
 	&__table {
 		width: 100%;
-		min-width: 760px;
+		min-width: max(760px, calc(280px + var(--plan-count) * 150px));
 		border-collapse: collapse;
 		font-family: var(--font-ui);
 		text-align: left;
 	}
 
 	&__col {
-		width: 18%;
+		width: 150px;
 		padding: 20px 20px 16px;
 		border-bottom: 2px solid var(--text-primary);
 		font-family: var(--font-display);
@@ -199,21 +194,20 @@ const value_meta: Record<ComparisonValue, { label: string, icon: MIconName }> = 
 	}
 }
 
-// Phones: each feature takes a full row, with the three plans in equal
-// thirds beneath it, so plan names and values never squeeze or collide.
+// Extra plans scroll inside the comparison region on narrow screens.
 @media only screen and (max-width: 600px) {
 	.comparison {
 		&__table,
 		&__table thead,
 		&__table tbody {
 			display: block;
-			min-width: 0;
+			min-width: calc(var(--plan-count) * 100px);
 		}
 
 		&__table thead tr,
 		&__row {
 			display: grid;
-			grid-template-columns: repeat(3, minmax(0, 1fr));
+			grid-template-columns: repeat(var(--plan-count), minmax(100px, 1fr));
 		}
 
 		&__col {

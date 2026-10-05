@@ -34,11 +34,11 @@ interface PlanPresentation {
 	benefits: PlanBenefit[]
 }
 
-type ComparisonValue = 'yes' | 'no' | 'later'
+type ComparisonValue = 'yes' | 'no' | 'later' | 'unspecified'
 
 interface PlanComparisonRow {
 	label: string
-	values: Record<PlanSlug, ComparisonValue>
+	values: Partial<Record<PlanSlug, ComparisonValue>>
 }
 
 interface FaqItem {

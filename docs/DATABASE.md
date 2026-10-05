@@ -1,10 +1,14 @@
 # BPO Profile — Database
 
-**Engine:** MySQL in development and production; Homestead MySQL for local development\
+**Engine:** MySQL 8.0.16+ target; Homestead locally and MySQL in production. The API development example and automated tests also support SQLite, which does not verify MySQL-specific constraints.\
 **App:** Laravel 13 (Eloquent)  
 **Conventions:** `snake_case` tables and columns, `id` bigint primary keys and `created_at` / `updated_at` unless a table below explicitly defines a composite key or creation-only timestamps. `deleted_at` exists only where listed. Slugs on soft-deleted entities are unique among non-deleted rows, enforced by unique functional indexes on conditional expressions. Pivots and append-only events are explicit exceptions to the default key/timestamp convention; Laravel infrastructure tables retain their framework defaults.
 
 This model covers the directory foundation and the verification/claim workflows required before public launch ([BPO Profile.pdf](BPO%20Profile.pdf), pp. 24-25), plus company plan/entitlement fields needed for later billing. The tables and workflow details are implementation decisions, not a schema prescribed by the PDF. Individual professional plan assignments and curated combination SEO pages require explicit later schema design; they are not implemented by the current company plan relationship.
+
+**Implementation boundary:** Section 4 describes the directory schema. [Section 9](#9-extensibility-and-future-schema-roadmap) records proposed extensions following the 2026-10-02 code review; future billing tables, migrations, and endpoints remain unimplemented. Section 9.8 records the Phase 1 catalog/plan/storage safeguards applied in code. Email-provider switching needs no new tables. Accepting payments will require a billing schema before paid checkout launches.
+
+**Phase 1 separation:** this schema belongs to the standalone API. The frontend keeps its own typed mock fixtures for investor review and does not read this database through live API calls. Fixture-only layout/copy revisions do not require migrations. Review actual business/contract changes separately, and defer frontend-to-API integration until explicitly requested.
 
 ---
 
@@ -121,7 +125,7 @@ Buyers have no rows in `users` at launch.
 
 Indexes: unique `email`, index `platform_role`.
 
-Phase 1 SPA authentication uses Passport's encrypted JWT `laravel_token` cookie together with a live Laravel database session; both authentication cookies are `HttpOnly`. A password or a linked Google identity starts the same pending email-code challenge. Requiring the emailed code on every fresh login is the current proposed implementation default for all account types, pending confirmation before implementation; neither the PDF nor the user's email-verification request specifies that frequency. Registration leaves `email_verified_at = NULL`; first successful code verification sets it, including for a Google-provided verified email. Google sign-in never assigns platform-admin privileges. Public payloads never expose password hashes, `auth_version`, or challenge secrets.
+The standalone Phase 1 API uses Passport's encrypted JWT `laravel_token` cookie together with a live Laravel database session; both authentication cookies are `HttpOnly`. A password or a linked Google identity starts the same pending email-code challenge. The existing implementation requires the code on every fresh login for all account types; this frequency is an application decision, not a PDF requirement. The frontend currently simulates these states without connecting. Registration leaves `email_verified_at = NULL`; first successful code verification sets it, including for a Google-provided verified email. Google sign-in never assigns platform-admin privileges. Public payloads never expose password hashes, `auth_version`, or challenge secrets.
 
 Password registration still requires first name, last name, and password. A newly created Google account may have missing names and no password, but cannot create a company or professional through onboarding until both names are supplied. A Google-only user may set a local password through the existing password-reset flow; this revokes prior authentication and requires a fresh completed login. The unique email constraint includes soft-deleted users, so Google sign-in cannot recreate or automatically merge an existing account by email.
 
@@ -130,7 +134,7 @@ Password registration still requires first name, last name, and password. A newl
 | Column | Type | Notes |
 | --- | --- | --- |
 | id | bigint PK | |
-| slug | varchar(50) | unique: `basic`, `professional`, `premium` |
+| slug | varchar(50) | unique stable code; initial seeds: `basic`, `professional`, `premium`; not a three-value database enum |
 | name | varchar(100) | |
 | audience | varchar(32) | `company`; `professional` reserved for a later assignment design |
 | max_professional_seats | int | null = unlimited |
@@ -143,6 +147,8 @@ Password registration still requires first name, last name, and password. A newl
 | updated_at | timestamp | |
 
 No payments table in Phase 1. Admin sets `companies.plan_id` and `companies.plan_expires_at`, validating that the plan is active and has `audience = company`. All three initial plan tiers belong to companies; the `professional` plan slug is a company tier name, not an individual subscription. Individual professional subscriptions and their entitlements are deferred to Phase 3 and require a separate assignment model.
+
+Additional company tiers are rows in this table; their number is not fixed. The admin API resolves supplied slugs or IDs to active company plans and rejects conflicting slug/ID pairs. The independent frontend accepts arbitrary mock plan codes, derives labels/options from its local catalog, and displays fallback content when editorial details are missing. Preview six tiers at `/pricing?state=expanded`. Company creation uses the active company plan with slug `basic`; Eloquent model saves/deletes protect its code, audience, and active state while allowing a display-name change. Bulk queries and direct SQL bypass those model safeguards and must preserve the default explicitly. See [implementation status](#98-current-implementation-follow-ups). The existing entitlement columns cover known features, while new feature behavior requires application support. Future prices, subscriptions, and assignments belong in [separate billing records](#94-prices-billing-history-and-entitlements).
 
 ### 4.3 `companies`
 
@@ -556,7 +562,7 @@ Index `user_id`, `social_account_id`, `session_binding_hash`, and `expires_at`. 
 
 Creation, resend, and verification lock the user, the linked social account when applicable, then the challenge rows under the shared order in §4.4; replacement revokes the previous challenge for that browser. Before verification or resend, recheck active user, the unchanged Google binding when applicable, matching local email/version/session binding, expiry, attempt budget, and unused/unrevoked state. Always mail the code to the user's current local email; provider email changes never replace that address. Resend replaces the MAC but retains the deadline and failed-attempt count. Count wrong codes atomically and revoke at the fifth failure. Only one concurrent successful verification may consume a challenge; mark `email_verified_at` if null in that transaction. Never sign in at the password-only step or Google callback. The authenticated session receives exactly the validated challenge version, then its ID and CSRF token are regenerated. The browser refreshes CSRF and calls `GET /auth/session` to obtain the Passport cookie before accessing protected API routes.
 
-Apply all account-wide revocation events in §4.14, including Google linking/login-method changes; clear `email_verified_at` on local email change. A mail failure cannot complete login. Queue code emails only after commit, protect transient queue payloads, and discard them after delivery/expiry; do not put codes in logs.
+Apply all account-wide revocation events in §4.14, including Google linking/login-method changes; clear `email_verified_at` on local email change. A mail failure cannot complete login. The current API sends codes immediately after the challenge transaction commits; they do not enter the background queue. If code delivery is queued later, encrypt transient payloads and recheck the current code/version, account, and expiry before every send. Production code emails must not use the log mailer.
 
 ### 4.18 `social_accounts`
 
@@ -587,6 +593,28 @@ Install Passport's standard migrations for the selected supported release, inclu
 These tables prepare for future delegated OAuth integrations; the first-party browser cookie in §4.14 does not create access/refresh-token rows. External client registration, bearer API routes, and external OAuth authorization/token issuance remain disabled in Phase 1. Before enabling an integration, complete its authorization-code-with-PKCE flow, explicit consent and least-privilege scopes, exact redirect allowlist, separate route authorization, refresh-token rotation, and access/refresh revocation, including the account lifecycle rules above. Password and implicit grants remain disabled.
 
 ---
+
+### 4.20 Queue and cache infrastructure
+
+The migration review on 2026-10-02 found the existing infrastructure sufficient for background email and provider switching. This reviews the migration files; it does not assert that a deployed database has applied them.
+
+| Tables | Responsibility | Provider changes |
+| --- | --- | --- |
+| `jobs` | Pending work, queue name, encrypted mail job payload, attempts, reservation and availability timestamps | Reused; no Gmail/BigMailer columns |
+| `failed_jobs` | Exhausted jobs, encrypted mail payload, exception, and failure timestamp | Reused for investigation and selected retries; daily seven-day retention |
+| `job_batches` | Laravel batch bookkeeping, already provisioned | Ordinary email delivery does not need batches |
+| `cache`, `cache_locks` | Shared cache, rate limits, and worker restart signals | Independent of the email provider |
+| `inquiries` | Authoritative inbound messages and business inbox status | `new/read/replied/archived/spam` are not email-delivery states |
+| `claim_tokens`, `team_invitations` | Intended recipient, token hash, expiry, and used/revoked state | Remain the authority; queued messages recheck token validity before sending |
+| `users`, `login_challenges`, `password_reset_tokens`, `sessions`, `oauth_*` | Account identity, sign-in and authorization infrastructure | Email transport changes do not change identity or grant permissions |
+| `social_accounts` | External sign-in identity bindings | Its `provider` is an identity provider, not an email sending provider |
+| Companies, professionals, memberships, taxonomies, plans, media, articles, and profile events | Directory content, access, and reporting | No transport-specific schema is needed |
+
+Provider selection, SMTP/API secrets, sender settings, and queue selection live in the server environment and Laravel configuration. Keep these out of user/company rows, generic public settings, and API responses. Queue mail after the domain transaction commits; rollbacks discard those dispatches. The present enqueue step is not an atomic transactional outbox, so a crash between domain commit and dispatch can leave a saved record without a notification. Delivery retries may duplicate a message after an ambiguous provider timeout.
+
+`jobs` is transient and `failed_jobs` is operational history, not a delivered/read/bounced email ledger. Add separate delivery/event tables only when implementing those features. Provider acceptance and actual inbox delivery are different outcomes. Retain database-backed inquiry history even if notification delivery fails.
+
+The current queue-index and foreign-key structure is adequate for the initial single-worker setup. Use observed query plans and queue backlog before adding indexes or moving queues/cache to Redis. Verify MySQL-specific functional indexes and enforced checks on an isolated MySQL 8.0.16+ test database before launch; SQLite tests cannot exercise them.
 
 ## 5. Soft deletes
 
@@ -656,14 +684,164 @@ MySQL `FULLTEXT` indexes with `MATCH (...) AGAINST (...)` can be added later on 
 
 ---
 
-## 9. Out of this schema (later)
+## 9. Extensibility and future schema roadmap
 
-- `subscriptions`, `payments`, `invoices`
-- individual professional plan assignments and entitlements (Phase 3; company `plan_id` does not implement them)
-- curated service + location / industry + service SEO content records (Phase 2 design)
-- profile-report submission and moderation queue (Phase 2 design)
-- `messages`, `threads`
-- `reviews`, `favorites`, `saved_searches`
-- `rfqs`, `rfq_recipients`
-- buyer `users` with a buyer role
-- multi-company professional memberships
+### 9.1 What should be configurable
+
+Review scope: the local API migrations, catalog seeder, search/validation rules, mail/storage behavior, Nuxt catalog types/store/pricing presentation, and the Musticker reference code on 2026-10-02. This is a source-code review, not inspection of either production database. No database migration is part of this documentation update.
+
+Use rows for business catalogs that grow, configuration for deployed integrations, and explicit application rules for permissions and state transitions. Adding a sixth payment method should insert a row; it should not create a sixth table, column, or database enum value. Adding a new payment gateway still requires a supported adapter, credentials, and integration tests.
+
+| Area | Current implementation | Recommended change and trigger |
+| --- | --- | --- |
+| Services, industries, capabilities, languages, technologies | Separate catalog tables with hierarchy, active state, ordering, and association pivots | Already extensible by adding rows. Keep the five taxonomy families explicit; a new family needs its own API/search semantics. Do not merge everything into an untyped settings table. |
+| Countries, regions, cities, served markets | Hierarchical `locations` and company/professional pivots | Reuse these rows. Payment eligibility can reference country-level locations without creating another conflicting country catalog. |
+| Company plan tiers | `plans` rows and manual company assignment; protected active `basic` default; independent frontend supports additional mock tiers and fallbacks | No new columns per tier. A configurable default remains future work. Before selling plans, add §9.4 billing records. |
+| Company size and work model | Fixed strings validated in application code and MySQL `CHECK` constraints; `DirectorySearch::SIZES` / `WORK_MODELS` | Keep the current contract at launch. If operators need to edit these choices, add dedicated `company_sizes` / `work_models` catalogs and migrate existing codes as described below. |
+| Companies, professionals, memberships | Explicit foreign keys and fixed authorization rules | Keep. Individual subscriptions need their own billing target; multi-company affiliations require a separate relationship redesign, not a JSON list of company IDs. |
+| Payment methods and providers | No billing tables or checkout implementation | Add the catalogs and financial records in §9.3–9.4 before the first paid checkout. No fixed limit of five methods. |
+| Transactional email providers | Server environment and `config/mail.php`; existing queue tables | Already switchable for supported transports. Add tracking tables only when delivery history is needed, or account/routing tables when operators need an admin switching screen. See §9.5. |
+| Identity providers | `social_accounts.provider` plus unique provider/subject and user/provider bindings; Google integration | Another identity needs callback, validation, linking, and revocation support, plus a migration for the current password/Google-only `login_challenges` check constraint. Keep separate from payment and email providers. |
+| Roles, moderation, affiliation, claims, inquiry states | Fixed values tied to policies and lifecycle actions | Keep controlled state transitions in code. An admin-editable label must not create a permission or a new paid/refunded state. Consider role/permission tables only with a separately designed custom-access feature. |
+| Certifications | Per-company records containing name, issuer, and year | Already accepts new certifications. Add a shared certification catalog only for consistent filtering/deduplication; retain company-specific evidence and dates. |
+| Media and storage | `media.disk`, `path`, MIME type, byte size, and owner reference; new writes use allowlisted `MEDIA_DISK` (default `public`) | No table per storage vendor. Reads/removal retain each row's disk. If thumbnails/variants become necessary, add `media_variants(media_id, variant, disk, path, mime_type, size_bytes, width, height)` with unique `(media_id, variant)`. Existing file moves require copy/verification. |
+| Articles, curated landings, reports | Articles exist; combined landing pages and report queues are later features | Add dedicated `landing_pages` with typed filter associations and `profile_reports` with review history when building Phase 2. More content is more rows. |
+| Analytics | Append-only `profile_events` and business-derived inquiry metrics | Add daily rollup tables when measured query volume requires them. Event names retain documented counting/deduplication semantics. |
+| Queue, cache, sessions, login challenges, OAuth infrastructure | Framework/lifecycle tables | Keep independent of providers. A queue/cache driver change is a deployment decision, not a new table for every vendor. |
+| Marketing, editable settings, audit history | No campaign subscription or general audit model | Introduce purpose-specific consent records before campaigns; add `audit_events` alongside operator-editable payment, pricing, or mail settings. Avoid a public catch-all table containing credentials. |
+
+If size/work-model catalogs are introduced, retain stable unique codes matching the current values, add name/order/active fields (and numeric min/max bounds for company sizes), then backfill new foreign keys without changing public filter codes. Replace the existing MySQL `companies_size_check` / `companies_work_model_check` rules as part of that rollout; merely adding rows cannot bypass those fixed-value checks. Validate unknown/inactive choices for new writes, preserve retired values on existing profiles, expose choices through catalog endpoints, and switch frontend forms and API validation together. This is an optional extension, not a claim that these enums are already editable.
+
+### 9.2 What Musticker does and what to reuse
+
+The reference inspected is `E:\accounts\EN_accounts\musticker`; paths below are relative to its `api/` directory. These observations describe the checked-out code, not its live configuration.
+
+| Musticker source | Observed design | Decision for BPO Profile |
+| --- | --- | --- |
+| `app/Models/Payment/PaymentMethod.php`, `app/Repositories/Payment/PaymentMethodRepository.php` | `payment_methods` supplies codes/names; `payment_method_countries` enables and orders methods by country; visibility/allowed-user rules restrict choices; names support translation | Reuse catalog rows, server-side eligibility, ordering, and restricted test options. |
+| `app/Services/Payments/Common/PaymentDataProvider.php`, `app/Models/Payment/PaymentMethodConfig.php` | Loads `payment_method_configs` per method and sandbox/production environment, including client/secret keys and provider configuration | Separate the gateway account from the customer-facing method so several methods can share one connection. Store a credential reference to deployment secrets instead of copying secrets into ordinary catalog rows. |
+| `app/Models/Payment/PaymentMethodDetail.php` and its migration | Keeps descriptive provider fields separate from environment credentials | Preserve that distinction; validate provider-specific metadata and keep important searchable fields typed. |
+| `app/Enums/PaymentType.php`, `app/Factories/PaymentFactory.php`, `app/Services/Payments/Common/PaymentServiceResolver.php` | More than five payment codes, with an explicit enum/factory mapping to implementations, including multiple methods through the same gateway | Dynamic rows alone do not implement a gateway. Use a code-owned adapter registry keyed by provider; map supported methods through validated provider codes. |
+| `app/Models/Payment/PaymentSummary.php`, `PaymentTransaction.php`, `CancelledPaymentTransaction.php` | Separate payment summaries, transaction attempts, and cancellations/refunds | Reuse the separation of intent, attempts, and refunds; design records around directory plan purchases rather than Musticker's product/shipping orders. |
+| `config/dynamic_mail.php`, `app/Services/Mail/DynamicMailService.php`, `app/Mail/DynamicBladeMail.php` | A template-key registry selects subject/view/mailer/sender and locale. The inspected service calls `send`; its mailable uses `Queueable` but does not implement `ShouldQueue` | This is configuration-driven templating, not a database mail-provider catalog. Retain BPO Profile's explicit queued/immediate policy. Consider template keys when message types grow. |
+| `config/mail.php` | Environment-selected Laravel transports; the shown failover chain is SMTP then log | Retain BPO Profile's SMTP backup and visible failures; logging must not count as successful production delivery. |
+
+Musticker is a useful payment reference because it already separates several concerns. Copying its whole commerce schema would bring product-specific behavior into a directory. The proposed changes below keep that useful separation while making gateway accounts, historical pricing, and payment retries explicit. No BigMailer adapter was found in the reviewed mail/configuration paths; this is not evidence of its live provider.
+
+### 9.3 Payment method catalogs (proposed, Phase 3)
+
+Distinguish the **method** a customer recognizes, the **provider** whose API processes it, and the **account** whose credentials and sandbox/live mode are used. One provider may process several methods, and the same method may be available through different providers.
+
+| Proposed table | Key columns and constraints | Purpose |
+| --- | --- | --- |
+| `payment_methods` | `id`, unique stable `code`, `name`, `kind`, `logo_key`, `is_active`, `sort_order`, timestamps | Customer-facing choices, such as card, a named wallet, or bank transfer. A method is a row, not a column. |
+| `payment_providers` | `id`, unique `code`, `name`, `adapter_key`, `is_active`, timestamps | Gateway catalog. `adapter_key` must resolve through a deployed allowlist; a DB value cannot load arbitrary code or endpoints. |
+| `payment_provider_accounts` | `id`, `payment_provider_id` FK, unique stable `code`, `environment`, merchant identity, `credential_ref`, `accepts_new_payments`, timestamps | Merchant connection. Permit multiple accounts per provider/environment. Environment is an explicit sandbox/live choice, not inferred from the app environment; identity and environment cannot change after use. |
+| `payment_options` | `id`, unique `public_id`, account FK, method FK, `provider_method_code`, `visibility` (`public`/`restricted`), `is_active`, `sort_order`; unique `(payment_provider_account_id, payment_method_id, provider_method_code)` | A supported method through a specific account. Credentials are shared by the account, not copied for every wallet/card choice. |
+| `payment_option_allowed_users` | Option/user FKs, composite primary key | Explicit access to restricted pilot options; it never overrides billing ownership or environment restrictions. |
+| `currencies` | `code` char(3) PK, `minor_unit`, `is_active` | Supported billing currencies and integer amount scale; new currencies are rows with verified provider support. |
+| `payment_option_rules` | Option FK, country-location FK, currency FK, optional `min_amount_minor` / `max_amount_minor`; unique `(payment_option_id, country_location_id, currency_code)` | Explicit country/currency availability. Require country-type locations and valid amount bounds. No rows means unavailable; avoid nullable wildcard uniqueness. |
+
+The catalog can hold six, twenty, or more choices. For example, enabling a wallet already supported by an installed adapter creates a method/option/rule as necessary. A brand-new gateway requires its adapter and webhook verification before its options can become selectable. Example method names do not promise merchant eligibility or support from any particular gateway.
+
+Checkout eligibility intersects active catalogs, the server-selected account environment, option visibility/allowed users, country/currency/amount rules, and actual adapter capabilities (including recurring payments when relevant). Recheck these server-side at checkout creation, even if the browser previously fetched a list. The browser cannot select sandbox/live mode. Mock/sandbox payments never grant real paid entitlements, including for an allowed tester. Provider-hosted checkout can select its supported methods dynamically; avoid duplicating the provider's entire catalog unless the application needs its own controls. [Stripe's dynamic payment methods](https://docs.stripe.com/payments/payment-methods/dynamic-payment-methods) is an example of this capability, not a provider selection for this project.
+
+Rotating credentials may update a secret reference only for the same merchant identity. A different merchant account or environment gets a new account row and code. Do not rebind an existing option to another account/method after transactions reference it. Retain old webhook verification material for the provider's supported rotation window. External object/event IDs and opaque idempotency keys require exact, case-sensitive comparison; do not inherit a case-insensitive catalog-name collation for their unique indexes.
+
+Disabling an option prevents new checkouts while historical payments, refunds, and verified late webhooks remain processable through their original account. Use a separate operational incident procedure if an account must stop all API calls. Financial references use restrictive foreign keys; do not cascade-delete payment history when retiring a catalog entry.
+
+### 9.4 Prices, billing history, and entitlements
+
+Build this with paid billing, not merely to launch the free directory. The concrete first implementation should select the tables below needed by its supported one-time or recurring purchase flow.
+
+| Proposed table | Core fields / invariant | Needed when |
+| --- | --- | --- |
+| `plan_prices` | Plan FK, unique price code, currency FK, integer `amount_minor`, `billing_interval`, `interval_count`, validity/active fields. Published prices are versioned: insert a new price instead of changing a purchased amount. | First paid plan |
+| `billing_accounts` | Nullable unique `company_id` / `professional_id` FKs; enforce exactly one target. Separate billing contact data from permission-granting memberships. | First paid plan; professional target enabled only with individual packages |
+| `invoices`, `invoice_items` | Billing-account FK; immutable issued line descriptions, quantities, unit amounts, currency, discount/tax amounts, totals, and billing identity snapshot. Items reference the purchased plan price where applicable. | First paid plan |
+| `billing_requests` | Billing-account FK, server-owned environment, operation, opaque request key, canonical input hash, processing state, invoice/payment references, timestamps. Unique `(billing_account_id, environment, operation, request_key)` independent of gateway choice. | First checkout or refund write; reserves retries before contacting a provider |
+| `payments` | Unique opaque `public_id`, invoice FK, intended amount/currency, controlled state, timestamps; local payment intent independent of any single gateway request. | First payment |
+| `payment_attempts` | Payment FK, option/account references, provider object type/reference, idempotency key, request fingerprint, amount/currency, normalized state, timestamps. Unique account/object-type/reference and account/idempotency key; retain each logical provider operation separately. | First gateway integration |
+| `refunds` | Captured attempt FK, amount/currency, provider refund reference, idempotency key, state and reason; unique `(account_id, provider_refund_reference)` and `(account_id, idempotency_key)`. Reserve pending refunds against the refundable balance as well as successful refunds. | Before enabling refunds |
+| `payment_disputes` | Captured attempt/account references, external dispute ID, amount/currency, status, response deadline, outcome; unique account/external dispute ID | Before enabling a payment method that can generate disputes/chargebacks; separate from refunds |
+| `credit_notes`, `credit_note_items` | Original invoice/item references, immutable numbered adjustment, amount/currency and reason; link any associated refund | Before issuing invoice corrections; a credit note does not itself confirm money was returned |
+| `payment_webhook_events` | Account FK, external event ID/type, received/processed timestamps, processing state, and bounded redacted or encrypted payload. Unique `(payment_provider_account_id, external_event_id)`; index pending processing. | First asynchronous gateway integration |
+| `plan_assignments` | Billing-account FK, plan FK, effective start/end, source (`manual` or `subscription`/`purchase`), optional subscription/invoice-item reference, revocation fields. Sources must belong to the same billing target. | Paid or individual entitlements; retain assignment history |
+| `provider_customers`, `subscriptions` | Customer mappings reference the billing account and provider account; subscriptions reference billing account, price, original provider account/reference, period boundaries, cancellation/end timestamps, and normalized state. External IDs are unique within the provider account. | Recurring billing only |
+| `provider_price_mappings` | Price FK, account FK, external product/price IDs; unique mapping per price/account | A provider requires its own product/price catalog |
+
+Amounts use integer minor units and a currency, never binary floating-point calculations. Currency scales are not always two decimal places; freeze the amount scale used by an issued price/document. Keep amount, currency, ownership, and foreign references in typed columns; JSON is only for validated provider-specific extras. All invoice/payment/attempt/refund currencies and account associations must agree. Record sandbox/live mode on billing operations/documents and reject cross-environment references. Assign unique invoice/credit-note numbers within the chosen issuer/environment/series; finalized documents are corrected through adjustments, not overwritten. Enforce financial history retention independently of user/company soft deletion; do not store card numbers or security codes in these records.
+
+Reserve the `billing_requests` key and persist the attempt before contacting the gateway. A browser retry must resolve the same local operation even if the default provider changed. Same key/different canonical input is a conflict. Provider retry keys are a second layer; reusing one logical attempt is not a new charge or a new attempt row on every HTTP retry. Serialize competing attempts against the same invoice, including requests with different keys, and allow only one unresolved charge operation at a time. Keep database transactions short: commit the reservation, call the provider, then persist/reconcile the result under locks.
+
+Retry an uncertain request using that attempt/key and reconcile the provider's result. A timeout is not proof of payment failure and must not trigger an automatic charge through a different provider. After a provider's idempotency retention window expires, query/reconcile rather than blindly resubmitting. Keep local request history for the operation's retry/reconciliation lifecycle. Use the selected adapter's guarantees; providers without them need explicit reconciliation before any retry. [Stripe's idempotency behavior](https://docs.stripe.com/api/idempotent_requests) illustrates why request keys and matching parameters belong in the design.
+
+Reserve refunds under the same captured-payment lock; successful plus pending/uncertain refund amounts cannot exceed the refundable balance. A timeout keeps its reservation until reconciliation proves the result. Authorization-only operations do not grant entitlements: confirm capture/settlement, and treat voids separately. Model dispute outcomes independently so a chargeback is not mistaken for a customer refund. Provider behavior varies; see the [refund lifecycle](https://docs.stripe.com/refunds) and [dispute lifecycle](https://docs.stripe.com/disputes/how-disputes-work) for examples. Defer partial capture, split tender, and multi-currency settlement unless explicitly supported and modeled in the first billing release.
+
+Verify webhook signatures against the original account and raw request body before accepting events. Durably record valid events before acknowledging receipt, then process them with retries. Deduplicate event IDs and enforce idempotent business transitions: distinct events may describe the same settlement. Lock the affected payment/invoice when applying captures, refunds, or entitlements; delayed events must not reverse a newer state. Recover pending stored events if queue dispatch fails. Browser return URLs cannot mark an invoice paid. See [Stripe's webhook documentation](https://docs.stripe.com/webhooks) for duplicate, ordering, and signature examples; every adapter must implement its provider's equivalent contract.
+
+Schedule bounded reconciliation of pending/unknown attempts, refunds, subscription renewals, and stored unprocessed events, with age/attempt indexes and an alert after repeated failure. A callback can arrive before the API response is saved: keep it pending until the local operation is correlated through trusted provider/account references; do not discard it or grant access based on browser metadata. Duplicate successful charges must enter an explicit overpayment/review path instead of granting the same plan twice. If manual bank transfer is offered, model an authenticated settlement action with operator, amount, currency, bank reference/evidence, and audit trail; an uploaded receipt alone never marks it paid.
+
+`companies.plan_id` / `plan_expires_at` remain the launch authority. When assignments are introduced, backfill existing manual assignments and switch all entitlement reads to a shared resolver in one coordinated rollout. The company columns may remain a compatibility projection, but cannot become a second independent authority. Enforce at most one effective base-plan assignment per billing target using transactional locking and a database uniqueness rule for the active assignment marker; historical/future assignments can coexist. A unique purchase-grant key, such as billing account plus invoice item, prevents a replay from granting the same purchased period again even after expiry. Define how paid renewals, expiry, manual grants, refunds, and disputes change entitlements before enabling paid access.
+
+Keep current typed entitlement columns until a growing feature set warrants `plan_features` plus `plan_feature_values(plan_id, feature_id, typed_value)`. Feature keys and types must be recognized by application handlers; inserting a feature name cannot implement a new capability. If a purchased offer promises fixed limits, snapshot or version those entitlements as well as the price. Never repurpose the company-tier slug `professional` as an individual subscription.
+
+Validate the plan audience against the billing target and reject overlapping base-plan periods under the account lock, not just duplicate active markers. Recurring invoices need a unique account/external-invoice mapping and a deduplicated renewal-period grant. Define upgrade timing, prorations or their explicit absence, scheduled cancellation, past-due/grace handling, and downgrade behavior before subscriptions launch. Changing a plan price/catalog row cannot rewrite an existing subscription contract. A downgrade blocks new usage above a limit without silently deleting existing team profiles or images. Apply expiry checks when authorizing requests even if a scheduled expiry worker is delayed. Saved provider payment instruments/mandates, if needed for recurring charging, are account-scoped opaque references with consent/status; never raw card details.
+
+Integrate recurring billing with account/company deletion before enabling it. A local soft delete does not cancel a remote subscription: persist the cancellation request, reconcile failures, and preserve historical billing records while denying new purchases/access. Company ownership changes keep billing attached to the company and re-evaluate who may access it; they must not silently transfer payment instruments or subscriptions between unrelated billing targets. These integrations are absent from the current directory-only lifecycle service.
+
+Changing the default gateway affects new payments only. Existing refunds, subscriptions, stored provider customer references, and webhooks keep their original account mapping. Moving recurring customers to another gateway is a separate migration and may require a new payment authorization; it is not an environment-variable switch.
+
+### 9.5 Mail, delivery history, and marketing
+
+Keep the current environment/configuration approach for deployment-managed SMTP or installed API transports. [Laravel's mail configuration](https://laravel.com/docs/13.x/mail) already separates mailers from application messages. No `gmail_sender` column, per-provider message table, or `mail_services` table is necessary merely to change the sender service. BigMailer remains an unimplemented API integration; see the [integration boundary](../../api/README.md#bigmailer-integration-boundary).
+
+Add these only with the corresponding product requirement:
+
+| Requirement | Proposed records | Rules |
+| --- | --- | --- |
+| Inspect delivery across provider changes | `email_deliveries` (unique application message ID, message type, intended-recipient snapshot, optional user/business reference); `email_delivery_attempts` (delivery FK, attempt number, original account code, provider message ID, timestamps/outcome); `email_delivery_events` (nullable attempt FK, account code, external event ID/type, provider message reference) | One logical delivery per recipient, including guests with no user row. Track each provider attempt. Unique delivery/attempt number and account/external event ID. Keep early/unmatched verified callbacks pending for correlation. Acceptance is distinct from delivery/bounce; SMTP may offer no delivery webhooks. |
+| Operator-managed connections | `mail_provider_accounts` (stable unique code, allowlisted driver, environment, sender identity, credential reference, active state); optional `mail_routes` (message purpose, account FK, priority) | Only add with a restricted, audited settings interface. Configuration changes invalidate cached resolutions and restart/reload workers. A DB row cannot install a missing transport. |
+| Recover notifications after a commit-to-queue crash | `notification_outbox` (domain event key, message type, intended recipient key, encrypted payload/reference, expiry, dispatch state/attempts, timestamps); unique `(domain_event_key, message_type, recipient_key)` | Write with the domain transaction. One inquiry may notify several recipients and send a confirmation, so uniqueness cannot be on the domain event alone. Retry dispatch idempotently and recheck token expiry. This improves recovery, not exactly-once email delivery; no raw tokens in plaintext metadata. |
+| Marketing campaigns | `marketing_contacts`, `marketing_subscriptions` keyed by contact/topic, append-only consent events, and scoped suppression/unsubscribe records | Transactional recipients are not automatically marketing subscribers. Preserve consent and suppression through provider changes. Keep these records independent of buyer-account permissions. |
+| Operator changes to prices, catalogs, or mail routing | Append-only `audit_events` (actor, action, target, redacted before/after, timestamp) | Record who changed eligibility or routing. Exclude credentials, raw email bodies, login codes, and token URLs; define access and retention. |
+
+Use a stable message-type/template key if email types multiply; templates can stay in version-controlled Blade/configuration. Database-managed template versions are a separate editorial feature, not a prerequisite for choosing Gmail or another provider. Keep login/reset delivery latency separate from marketing queues, and retain the current rule that inquiry business state is not email-delivery state.
+
+Freeze the intended recipient for a logical delivery and define retention/access for address snapshots; a changed account email must not silently reroute an old token message. Keep provider-account codes stable across secret rotation, and create a new account record when the provider identity changes. Future route selection requires changing `QueuedMail::send`, which currently deliberately clears a queued mailer override to use the current default. Adding `mail_routes` rows alone will have no effect. Failover attempt tracking also needs transport-level instrumentation; the existing queue tables do not provide it. Preserve decryption of pending/failed jobs and outbox payloads during key rotation, and test multiple recipients, early callbacks, and duplicate provider acceptance.
+
+### 9.6 Rollout and migration order
+
+1. **Initial free launch:** keep the current tables and configured mail transports. Use existing taxonomy/location/plan rows. Do not run future billing migrations simply to reserve provider names.
+2. **Operator catalogs:** the Phase 1 safeguards in [§9.8](#98-current-implementation-follow-ups) are implemented. Default seeds insert missing stable codes and preserve edited, disabled, and soft-deleted rows. Deliberate corrections use reviewed data migrations. Explicit demo seeding is restricted to local/testing databases with compatible fixture IDs. Keep frontend fixtures separate; live catalog/cache integration waits for an explicit instruction to connect. Do not renumber referenced IDs.
+3. **First paid release:** add method/provider/account/option catalogs and the price, invoice, payment, event, and assignment records needed by the chosen purchase flow. Use additive migrations and explicit foreign keys/indexes; avoid a new table for each gateway. Add operator permissions/audit records with configuration editing.
+4. **Enable a payment option only after verification:** exercise more than five methods, disabled/restricted/test options, sandbox/live isolation, and supported country/currency combinations. Test duplicate browser keys across provider changes, competing keys on one invoice, expired provider retry windows, missing/early/duplicate/out-of-order callbacks, pending refund reservations, disputes, renewal/expiry/downgrade behavior, and server reconciliation. Include a default switch with old payments still pending.
+5. **Grow by requirement:** add recurring mappings when subscriptions launch, mail tracking/outbox when required, and editable size/work-model catalogs only if operators need them. Add languages/translations or shared certification catalogs with their actual features.
+6. **Validate the production engine:** back up before schema rollout; test migrations and backfills on an isolated MySQL 8.0.16+ database. Verify uniqueness, check constraints, concurrent settlement/assignment behavior, and rollback strategy. SQLite-only tests cannot establish those guarantees.
+
+### 9.7 Other later modules
+
+The review does not make every field administrator-configurable. Keep these as distinct future features with explicit ownership and access rules:
+
+- Curated discovery pages: `landing_pages` plus service/industry/location associations, publication workflow, unique canonical paths, and content/eligibility checks.
+- Profile reporting: `profile_reports` and review actions; a reason catalog can grow independently of the fixed moderation workflow.
+- Localized catalogs/content: dedicated translation rows keyed by entity, locale, and field if multilingual publishing is introduced; retain stable codes and foreign keys.
+- Shared certification filters: a certification catalog plus company evidence records, without marking free-text claims as verified.
+- Conversations: `threads`, participants, and `messages`; separate from inbound inquiry notification history.
+- Reviews, favorites, saved searches, RFQs/recipients, and buyer accounts: new modules with their own authorization; payment or mail contacts alone do not create users.
+- Multi-company professional affiliations: an explicit affiliation relation and ownership/visibility redesign; the current single `professionals.company_id` remains authoritative until then.
+
+### 9.8 Current implementation follow-ups
+
+The Phase 1 implementation now addresses the catalog, plan, and storage findings below. The frontend's disconnected state remains intentional for investor review. These changes need no new database tables; future billing and per-purpose mail routing remain proposals.
+
+| Area | Implemented behavior | Remaining boundary |
+| --- | --- | --- |
+| Default company plan | Both creation paths use `Plan::defaultCompany()`; model saves/deletes protect `basic`, its company audience, and active state | Direct SQL/bulk updates bypass model events. If a configurable default is needed later, migrate both creation paths to a validated reference together. |
+| Frontend catalogs deliberately use mock data | The Nuxt catalog store imports local taxonomy/location/plan fixtures | Keep this source during Phase 1 investor review. Change fixture values and presentation locally. Replacing it with live catalog requests is deferred integration work only. |
+| Additional company plan codes | Admin assignment resolves active company rows by slug/ID. Frontend pricing, comparison headers, guide, admin options, and dashboard labels use the local catalog; missing comparisons show `Ask us` | `/pricing?state=expanded` demonstrates six mock tiers. Future editorial/price fields and live catalog loading need separate contract/integration work. |
+| Catalog seeding | `DatabaseSeeder` only runs insert-only `CatalogSeeder`; matching stable codes include soft-deleted rows. Occupied IDs are preserved and new location parents resolve to actual IDs | Use explicit `DemoSeeder` only for disposable local/testing data; it checks fixture IDs before creating sample accounts. Stable-code renames and intentional corrections require a data migration. |
+| Upload storage | `MEDIA_DISK` selects a configured disk allowed by `directory.media.allowed_disks`; disk name/instance are captured for writes, persisted metadata, and failure cleanup | Default is `public`; `s3` also requires its adapter/configuration before use. Old rows keep their disk for URLs/removal. Keep old disk aliases until files are moved and verified. `FILESYSTEM_DISK` alone does not switch uploads. |
+| Per-purpose mail routes are not implemented | `QueuedMail::send` resets the mailer override; no delivery-attempt ledger exists | Keep default-provider switching as documented. Implement route resolution and actual transport attempt recording together if these tables are introduced. |
+
+For current verification, API tests add/edit/retire catalog rows in an isolated database; frontend checks use extra local fixture rows and presentation fallbacks. A live cache/SSR refresh path and visibility without a frontend rebuild belong to later explicitly requested integration. Prefer stable IDs/codes and deterministic ordering. Retiring an API term must not delete historical associations; decide separately whether it remains selectable or publicly searchable. Required non-null sentinels such as `unknown` must remain available during a size/work-model migration.

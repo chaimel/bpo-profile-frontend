@@ -6,7 +6,6 @@ import type {
 	AffiliationStatus,
 	CompanySize,
 	DirectorySort,
-	PlanSlug,
 	PublicationStatus,
 	WorkModel,
 } from '~/types/features/directory'
@@ -42,12 +41,6 @@ const sortLabels: Record<DirectorySort, string> = {
 	relevance: 'Relevance',
 	newest: 'Newest',
 	name: 'Name (A–Z)',
-}
-
-const planLabels: Record<PlanSlug, string> = {
-	basic: 'Basic',
-	professional: 'Professional',
-	premium: 'Premium',
 }
 
 const inquiryTypeLabels: Record<InquiryType, string> = {
@@ -113,7 +106,6 @@ export {
 	companySizeLabels,
 	workModelLabels,
 	sortLabels,
-	planLabels,
 	inquiryTypeLabels,
 	companyRoleLabels,
 	platformRoleLabels,
