@@ -1,4 +1,4 @@
-export const iconSpriteVersion = "1790761353637" as const
+export const iconSpriteVersion = "1791170401902" as const
 export const icons = {
   "brand-linkedin": {
     "id": "icon-brand-linkedin",
