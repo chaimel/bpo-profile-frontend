@@ -13,6 +13,7 @@ import type {
 	GuidePhase,
 	GuidePoint,
 	GuideRisk,
+	GuideStop,
 	GuideTour,
 } from '~/types/features/guide'
 
@@ -128,6 +129,80 @@ const modelRules: GuideFact[] = [
 		icon: 'light-star',
 		title: 'An unlabeled spot',
 		text: 'When featured placements launch, they will always say Featured and still follow the ranking rules.',
+	},
+]
+
+// What providers can measure (PDF pp. 37–38; docs/PLAN.md §4.4, §4.7),
+// and where the demo shows it. Metric names match the stats screens.
+const analyticsIntro = {
+	title: 'Analytics for providers',
+	text: 'Providers see how buyers find and contact them, along the path a buyer takes: a search result, a profile, the sales team, then an inquiry. A company’s totals include its sales team, and each sales professional sees their own.',
+	plans: 'Professional includes basic analytics, and Premium adds breakdowns and trends in a later phase. Until online checkout opens, every listed company’s dashboard shows the basic counts.',
+	note: 'In the demo the figures are samples: the date range doesn’t change them, and nothing you do here is counted.',
+	metrics_title: 'What’s counted',
+	stops_title: 'See it in the demo',
+}
+
+const analyticsMetrics: GuidePoint[] = [
+	{
+		title: 'Search impressions',
+		text: 'A result card actually displayed in search, not every result fetched.',
+	},
+	{
+		title: 'Profile views',
+		text: 'A profile page actually displayed, not one fetched in the background.',
+	},
+	{
+		title: 'Sales profile views',
+		text: 'Views of the sales team’s own pages. They count toward the company’s total and are also shown on their own.',
+	},
+	{
+		title: 'Contact clicks',
+		text: 'Clicks on a profile’s Connect, Contact and Quote buttons.',
+	},
+	{
+		title: 'Website clicks',
+		text: 'Visits to the provider’s own website from its profile.',
+	},
+	{
+		title: 'Contact and quote requests',
+		text: 'Inquiries by type: contacts, questions and quote requests.',
+	},
+	{
+		title: 'Lead conversions',
+		text: 'Accepted inquiries of every type, with spam left out. Each is a conversation started, not a sale won.',
+	},
+	{
+		title: 'Inquiries per profile view',
+		text: 'Inquiries divided by profile views over the same period. It can pass 100%, and reads Unavailable when there are no views.',
+	},
+]
+
+const analyticsStops: GuideStop[] = [
+	{
+		title: 'Company stats',
+		to: '/dashboard/companies/10/stats',
+		text: 'Northshore CX’s numbers, sales team included, with how each one is counted.',
+	},
+	{
+		title: 'A sales pro’s stats',
+		to: '/dashboard/stats',
+		text: 'Ana Reyes’s numbers, for her own profile only.',
+	},
+	{
+		title: 'The dashboard',
+		to: '/dashboard',
+		text: 'The last 30 days at a glance, with a link to the full stats.',
+	},
+	{
+		title: 'No activity yet',
+		to: '/dashboard/companies/10/stats?state=empty',
+		text: 'Every count reads zero, and the rate reads Unavailable.',
+	},
+	{
+		title: 'Analytics in the plans',
+		to: '/pricing#compare-plans-title',
+		text: 'Basic analytics from Professional up, and advanced analytics with Premium, marked Coming later.',
 	},
 ]
 
@@ -525,6 +600,9 @@ export {
 	audiences,
 	modelIntro,
 	modelRules,
+	analyticsIntro,
+	analyticsMetrics,
+	analyticsStops,
 	growthIntro,
 	growthSteps,
 	roadmapIntro,

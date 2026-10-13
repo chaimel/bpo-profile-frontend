@@ -201,7 +201,7 @@ const points: { icon: MIconName, title: string, text: string }[] = [
 
 @media only screen and (max-width: 1024px) {
 	.auth {
-		grid-template-columns: 1fr;
+		grid-template-columns: minmax(0, 1fr);
 
 		&__panel {
 			display: none;

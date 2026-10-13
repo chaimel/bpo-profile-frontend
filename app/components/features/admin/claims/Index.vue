@@ -236,7 +236,7 @@ function reissue() {
 @media only screen and (max-width: 1024px) {
 	.claims {
 		&__grid {
-			grid-template-columns: 1fr;
+			grid-template-columns: minmax(0, 1fr);
 		}
 
 		// phones and tablets show one pane at a time

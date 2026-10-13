@@ -617,3 +617,22 @@ Mail-provider switching is currently a deployment operation described in the [AP
 Use separate verified mail-webhook routes and delivery/event tables if delivery tracking is built. A marketing unsubscribe updates topic-specific consent/suppression records; it must not delete the user's account or an inquiry. Payment state, inquiry state, and email-delivery state remain separate contracts.
 
 Mail-delivery records identify one intended recipient per logical message, including recipients without user accounts. Store early verified delivery events for later provider-message correlation. A future per-purpose route table requires changing the current queued-mail resolver; it cannot be enabled just by inserting rows. The existing default-provider switch remains the supported behavior.
+
+---
+
+## 13. Selective real-time notifications (proposed)
+
+These endpoints and broadcasts are proposed, not current API routes. Frontend fixtures remain disconnected. The [first scope](PLAN.md#selective-real-time-notifications-planned) is inquiry/quote-request alerts and notification unread counts; claim/affiliation decisions and accepted invitations follow later. Public directory requests and analytics remain ordinary HTTP operations.
+
+| Method | Proposed path | Behavior |
+| --- | --- | --- |
+| GET | `/api/notifications` | Cursor-paginated history for the authenticated recipient, newest first with a stable ID tie-breaker; current target-access rules apply |
+| GET | `/api/notifications/unread-count` | `{ "unread_count": 3 }` from unread notification rows under the same visibility rules as history |
+| PATCH | `/api/notifications/{id}/read` | Mark an accessible notification read, idempotently; changing notification state does not change inquiry status |
+| POST | `/api/broadcasting/auth` | Authorize only the caller's private `users.{userId}` subscription using the existing browser session/cookie/CSRF checks |
+
+No recipient/user ID from a request may override the authenticated user. Return `404` for another user's or an inaccessible notification, and `403` for an unauthorized channel subscription; missing/invalid authentication returns `401`. List rows contain `id`, controlled `kind`, a safe display summary, an authorized subject reference, `created_at`, and nullable `read_at`. Return neither arbitrary notification JSON nor token-bearing URLs. Filter lost memberships/deleted or inaccessible targets consistently from history and counts, and authorize the target again when opened.
+
+Proposed event name: `notifications.changed`. The small versioned payload contains `version: 1`, a stable UUID `event_id` reused for broadcast retries, the `notification_id`, and `change: created|read`. It is a hint to refetch, not a replacement for the HTTP response or proof of current access. Emit only after database commit; deduplicate recipient rows by the stored domain event key, and recheck queued recipients before broadcasting. Existing sockets must respect session revocation as described in the [architecture](ARCHITECTURE.md#selective-real-time-notifications-planned).
+
+Fetch current history/counts when subscribing, reconnecting, or returning to the dashboard. An event missed while offline remains recoverable from saved records. Repeat/out-of-order signals must not inflate counts. A broadcast failure does not turn a successfully saved inquiry into an API failure; existing email delivery remains separate. These proposals require the [notification-history migration](DATABASE.md#99-in-app-notification-history-proposed) when implemented, but no migration or live connection is authorized by this documentation update.

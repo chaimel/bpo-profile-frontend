@@ -105,7 +105,10 @@ const sitemapAreas: SitemapArea[] = [
 						title: 'Pricing',
 						path: '/pricing',
 						to: '/pricing',
-						summary: 'Listing plans for BPO companies. Basic is free, and benefits that aren’t built yet are marked Coming later.',
+						summary: 'Listing plans for BPO companies. Basic is free, and benefits that aren’t built yet are marked Coming later. The six-tier preview adds sample plans to show how the page handles more.',
+						states: [
+							{ label: 'Six-tier preview', to: '/pricing?state=expanded' },
+						],
 					},
 					{
 						title: 'About',

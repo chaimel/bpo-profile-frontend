@@ -191,6 +191,10 @@ const { isOpen, openModal, closeModal } = useModal()
 
 @media only screen and (max-width: 600px) {
 	.header {
+		&__con {
+			gap: 16px;
+		}
+
 		&__sign-in {
 			display: none;
 		}
@@ -199,6 +203,13 @@ const { isOpen, openModal, closeModal } = useModal()
 			height: 40px;
 			padding-inline: 14px;
 		}
+	}
+}
+
+// the narrowest phones: Get Listed stays one tap away, in the menu's actions
+@media only screen and (max-width: 359px) {
+	.header__cta {
+		display: none;
 	}
 }
 </style>

@@ -207,6 +207,7 @@ const emit = defineEmits<{
 
 	&__secondary {
 		display: flex;
+		flex-wrap: wrap;
 		gap: 8px;
 
 		> * {

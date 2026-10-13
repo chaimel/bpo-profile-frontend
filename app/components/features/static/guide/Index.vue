@@ -6,6 +6,7 @@
 		<Goal />
 		<Audiences />
 		<Model />
+		<Analytics />
 		<Growth />
 		<Roadmap />
 		<Risks />
@@ -21,6 +22,7 @@
 </template>
 
 <script setup lang="ts">
+import Analytics from './Analytics.vue'
 import Areas from './areas/Index.vue'
 import Audiences from './Audiences.vue'
 import Banner from './Banner.vue'

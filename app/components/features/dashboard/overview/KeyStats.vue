@@ -82,6 +82,7 @@ const inquiry_total = computed(() =>
 	}
 
 	// four stats: one row when the column is wide enough, else two by two
+	// (one per row on the narrowest phones)
 	&__grid {
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -102,6 +103,13 @@ const inquiry_total = computed(() =>
 @container (min-width: 680px) {
 	.key-stats__grid {
 		grid-template-columns: repeat(4, minmax(0, 1fr));
+	}
+}
+
+// the narrowest phones: one stat per row, so no value has to break
+@container (max-width: 299px) {
+	.key-stats__grid {
+		grid-template-columns: minmax(0, 1fr);
 	}
 }
 </style>

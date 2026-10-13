@@ -39,6 +39,7 @@
 
 <script setup lang="ts">
 import {
+	analyticsIntro,
 	areasIntro,
 	audiencesIntro,
 	demoIntro,
@@ -78,6 +79,7 @@ const parts = [
 			{ label: goalIntro.title, href: '#goal' },
 			{ label: audiencesIntro.title, href: '#audiences' },
 			{ label: modelIntro.title, href: '#model' },
+			{ label: analyticsIntro.title, href: '#analytics' },
 			{ label: growthIntro.title, href: '#growth' },
 			{ label: roadmapIntro.title, href: '#roadmap' },
 			{ label: risksIntro.title, href: '#risks' },

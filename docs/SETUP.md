@@ -202,6 +202,19 @@ Implementation and commands: [API email and queue setup](../../api/README.md#ema
 - Logo, cover, photo uploads follow the [media rules](ARCHITECTURE.md#7-media): JPEG/PNG/WebP, content/size/dimension checks, re-encoding, and generated filenames
 - Meaningful image alternative text stored with uploaded media
 
+### Future selective real-time notifications
+
+This is a documented follow-up, not an installation or connection step for the investor preview. Start with new inquiry alerts and notification unread counts; approval and invitation events follow later. The planned stack is [Laravel Reverb](https://laravel.com/framework/docs/reverb) with Echo on the Nuxt client. Search, pricing, edits, uploads, and analytics keep their normal HTTP flow.
+
+When implementation is explicitly requested:
+
+1. Add the [durable notification records](DATABASE.md#99-in-app-notification-history-proposed), recipient policies, HTTP history/read/count endpoints, and after-commit events. Test the API independently with broadcast fakes. Add frontend mock notification states independently.
+2. Install compatible broadcasting dependencies and configure Reverb/Echo only for this feature. Use a supervised Reverb process alongside the queue worker, HTTPS/WSS proxy routing, allowed frontend origins, and private-channel authorization that preserves the existing session/Passport/CSRF rules. Keep notification broadcasting on a serviced queue so slow email retries do not hold up live alerts.
+3. Test rollback, duplicate delivery/read requests, wrong-recipient access, lost membership, revoked sessions including already-connected sockets, offline/reconnect recovery, and socket outages. Saved history must remain accessible through authorized HTTP endpoints even when broadcasts fail.
+4. After the separate explicit instruction to connect, enable client subscriptions only for signed-in users. Refetch authoritative history/counts on signals and reconnect/focus; allow bounded visible-page polling during outages. Verify that public pages and analytics do not open unnecessary subscriptions.
+
+Document supervisor/restart, proxy, and monitoring settings for the selected host when deploying. This update installs no packages, runs no migrations or workers, and adds no live frontend requests. See [event scope](PLAN.md#selective-real-time-notifications-planned) and [proposed API](API.md#13-selective-real-time-notifications-proposed).
+
 ### Future AWS S3 and Cloudflare R2 storage
 
 Both providers fit the existing media schema. [Laravel supports S3-compatible storage](https://laravel.com/framework/docs/13.x/filesystem#amazon-s3-compatible-filesystems), including [Cloudflare R2's S3 API](https://developers.cloudflare.com/r2/api/s3/api/). Keep a separate named disk for each provider/bucket whose files remain in use:

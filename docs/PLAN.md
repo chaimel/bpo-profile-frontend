@@ -156,6 +156,21 @@ Buyer accounts, saved profiles, multi-provider RFQs, and in-app messaging are no
 - Claim unclaimed company records, including unpublished records created by admins or imports. A public claim landing page can lead to sign-in/registration; submitting a claim requires an authenticated, email-verified account. A `company_claims` request remains pending until platform-admin approval; the approved claimant receives an emailed token, whose acceptance atomically grants ownership and marks the listing claimed. Claiming does not automatically verify or publish a listing.
 - Profile completeness score shown in dashboard and used in ranking.
 
+#### Selective real-time notifications (planned)
+
+Use WebSockets for a small set of important signed-in dashboard updates. This is planned work, not an implemented feature or permission to connect the apps. First implement new inquiry/quote-request alerts and notification unread counts; approval and invitation updates can follow separately.
+
+| Priority | Trigger | Intended live update |
+| --- | --- | --- |
+| First | A provider inquiry, question, or quote request is saved | Notify eligible recipients; refresh their notification bell and accessible inbox |
+| First | A recipient marks a notification read | Refresh that user's notification unread count across their open tabs |
+| Later | A claim or professional-affiliation decision is saved | Refresh the affected user's status; claim approval still requires the existing token-acceptance step |
+| Later | A team invitation is accepted | Refresh the relevant company owner/admin's team list |
+
+Search, pricing, ordinary profile edits, uploads, and analytics continue through normal HTTP requests. Chat, typing indicators, and presence remain outside this scope. Persist per-user notification history/read state independently of WebSocket delivery; load missed notifications through the API when returning or reconnecting. Existing email notifications continue under their own delivery rules. A notification's read state is separate from the shared inquiry status.
+
+The proposed implementation uses Laravel Reverb and Echo, with private recipient channels and current account/membership authorization. Prepare API behavior and frontend mock states independently; enable real subscriptions only after an explicit instruction to connect. See [architecture](ARCHITECTURE.md#selective-real-time-notifications-planned), [proposed API](API.md#13-selective-real-time-notifications-proposed), and [proposed storage](DATABASE.md#99-in-app-notification-history-proposed).
+
 ### 4.6 Trust — Phase 1
 
 Meaningful badges only:
@@ -401,6 +416,7 @@ Catalog/plan rendering, default-plan protection, insert-only seeds, and configur
 | Inquiries and email | Simulate validation/success/failure; show fixture inbox and delivery states | Verify persistence, recipient routing, encrypted queued mail, retries, and immediate login/reset mail with fakes | Submit real forms and surface actual request outcomes |
 | Images | Preview selected local files and UI error states without uploading | WebP compression plus allowlisted `MEDIA_DISK`, stored row disks, and failure/replacement cleanup implemented | Multipart upload and API-returned URLs |
 | Analytics | Render fixture charts/counts and local interaction previews | Verify server aggregation and event deduplication | Send browser events to the API |
+| Selective notifications (planned) | When implemented, preview bell/unread, empty, read, and disconnected states using local fixtures | When implemented, test durable recipient records, policy checks, deduplication, and broadcast fakes | Enable private subscriptions for inquiries/unread counts first; approval/invitation events later |
 
 Frontend acceptance: the review build works with Laravel stopped; UI interactions make no requests to the application API, authentication, upload, or event endpoints. API acceptance: automated checks run without Nuxt and use isolated database/provider fixtures. Check contracts by comparing documented fields and test fixtures; do not introduce a live dependency for this comparison.
 

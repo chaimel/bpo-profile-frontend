@@ -6,7 +6,7 @@
 				<MIcon :name="props.icon" size="sm" />
 			</span>
 		</div>
-		<span class="m-stat__value">{{ props.value }}</span>
+		<span :class="['m-stat__value', { 'm-stat__value--text': is_text }]">{{ props.value }}</span>
 		<span v-if="$slots['default'] || props.hint" class="m-stat__hint">
 			<slot>{{ props.hint }}</slot>
 		</span>
@@ -14,6 +14,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { MIconName } from '~/types/base/ui'
 import MIcon from './MIcon.vue'
 
@@ -31,4 +32,7 @@ const props = withDefaults(defineProps<Props>(), {
 	icon: undefined,
 	tone: 'default',
 })
+
+// a word such as "Unavailable" is a status, not a figure
+const is_text = computed(() => typeof props.value === 'string' && !/\d/.test(props.value))
 </script>

@@ -194,20 +194,26 @@ const value_meta: Record<ComparisonValue, { label: string, icon: MIconName }> = 
 	}
 }
 
-// Extra plans scroll inside the comparison region on narrow screens.
+// Phones: each feature takes a full row, with the plans side by side
+// beneath it. Three plans fit the narrowest screen; extra plans scroll
+// inside the comparison region while the feature name stays in view.
 @media only screen and (max-width: 600px) {
 	.comparison {
+		&__scroll {
+			container-type: inline-size;
+		}
+
 		&__table,
 		&__table thead,
 		&__table tbody {
 			display: block;
-			min-width: calc(var(--plan-count) * 100px);
+			min-width: calc(var(--plan-count) * 96px);
 		}
 
 		&__table thead tr,
 		&__row {
 			display: grid;
-			grid-template-columns: repeat(var(--plan-count), minmax(100px, 1fr));
+			grid-template-columns: repeat(var(--plan-count), minmax(0, 1fr));
 		}
 
 		&__col {
@@ -231,8 +237,12 @@ const value_meta: Record<ComparisonValue, { label: string, icon: MIconName }> = 
 			}
 		}
 
+		// as wide as the visible region, and held there while it scrolls
 		&__feature {
+			position: sticky;
+			left: 0;
 			grid-column: 1 / -1;
+			max-width: 100cqi;
 			padding: 14px 14px 4px;
 			font-size: 15px;
 			line-height: 22px;

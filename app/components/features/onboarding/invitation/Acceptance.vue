@@ -354,6 +354,11 @@ watch(() => props.state, async () => {
 		&__profile {
 			padding: 16px 18px;
 		}
+
+		// a long action label wraps rather than widening the page
+		&__actions .m-button {
+			white-space: normal;
+		}
 	}
 }
 </style>

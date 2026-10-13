@@ -44,7 +44,7 @@ app/
 Browse `/styleguide` (noindex) for every base and core component with its variants.
 
 For investors and other reviewers, `/static/guide` covers the business (the goal, who it serves,
-the business model, growth, roadmap and risks, from the brief and `docs/PLAN.md`), then how the
+the business model, provider analytics, growth, roadmap and risks, from the brief and `docs/PLAN.md`), then how the
 static demo works, with four guided tours. `/static/sitemap` lists every screen with a link to each
 of its states. Both are noindex and not linked from the site's menus, so share the URL directly.
 Their copy lives in `app/data/features/guide.ts` and `sitemap.ts`: update the sitemap when you add

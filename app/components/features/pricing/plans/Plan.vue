@@ -76,17 +76,16 @@ const benefit_groups = computed<BenefitGroup[]>(() =>
 .plan {
 	display: flex;
 	flex-direction: column;
-	flex: 1 1 0;
 	min-width: 0;
 	padding: 36px 32px 40px;
 
-	// a rule between neighbouring plain plans; the highlighted one has a panel
-	&:not(.plan--highlighted) + .plan:not(.plan--highlighted) {
+	// a rule between neighbouring plain plans on one row; the highlighted
+	// one has a panel. The plans grid marks the first plan of each row.
+	&:not(.plan--highlighted) + .plan:not(.plan--highlighted, .plan--row-start) {
 		border-left: var(--rule);
 	}
 
 	&--highlighted {
-		flex-grow: 1.3;
 		margin-right: 16px;
 		border-radius: var(--radius-lg);
 		background: var(--canvas);
@@ -176,7 +175,6 @@ const benefit_groups = computed<BenefitGroup[]>(() =>
 @media only screen and (max-width: 1024px) {
 	// stacked: each plan takes its content height
 	.plan {
-		flex: none;
 		padding: 32px 0;
 
 		&:not(.plan--highlighted) + .plan:not(.plan--highlighted) {

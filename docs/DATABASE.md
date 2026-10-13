@@ -845,3 +845,25 @@ The Phase 1 implementation now addresses the catalog, plan, and storage findings
 | Per-purpose mail routes are not implemented | `QueuedMail::send` resets the mailer override; no delivery-attempt ledger exists | Keep default-provider switching as documented. Implement route resolution and actual transport attempt recording together if these tables are introduced. |
 
 For current verification, API tests add/edit/retire catalog rows in an isolated database; frontend checks use extra local fixture rows and presentation fallbacks. A live cache/SSR refresh path and visibility without a frontend rebuild belong to later explicitly requested integration. Prefer stable IDs/codes and deterministic ordering. Retiring an API term must not delete historical associations; decide separately whether it remains selectable or publicly searchable. Required non-null sentinels such as `unknown` must remain available during a size/work-model migration.
+
+### 9.9 In-app notification history (proposed)
+
+Selective WebSocket updates need durable history/read state for offline users. Add a single `user_notifications` table when this feature is implemented; this documentation does not add a migration. The existing `inquiries`, `profile_events`, mail jobs, and future email-delivery tables do not represent a personal notification bell. Laravel's [database notifications](https://laravel.com/framework/docs/notifications#database-notifications) provide a persistence pattern; the fields below are this application's proposed user-specific design.
+
+| Field | Proposed purpose |
+| --- | --- |
+| `id` | UUID primary key, exposed as the notification ID |
+| `recipient_user_id` | Foreign key to the existing user receiving the notification; never derived from a client-supplied recipient |
+| `domain_event_key` | Stable server-generated key for the originating transition, reused on retries; separate decisions on the same record have different keys |
+| `kind` | Controlled application code, initially `inquiry_received`; later `claim_decided`, `affiliation_decided`, and `invitation_accepted` |
+| `company_id` | Nullable company reference for scope; it does not grant membership or target access |
+| `subject_type`, `subject_id` | Allowlisted domain reference resolved through the relevant current authorization policy |
+| `data` | Minimal allowlisted presentation metadata; no message bodies, sender contact details, secrets, or acceptance/reset tokens |
+| `read_at` | Nullable timestamp for this recipient's notification read state |
+| `created_at`, `updated_at` | History ordering and state-change timestamps |
+
+Unique `(recipient_user_id, domain_event_key)` prevents duplicate recipient records. Index `(recipient_user_id, created_at, id)` for history and `(recipient_user_id, read_at)` for unread queries. Save domain changes and recipient rows together; broadcast only after commit. The same inquiry may create separate rows for multiple authorized recipients, and reading one recipient's notification does not mark another's read or alter the shared inquiry status.
+
+Keep durable rows independent of the transport, so polling and WebSockets read the same history. Resolve current target visibility for both lists and counts; remove access after membership/account changes and exclude deleted or inaccessible targets. Define user/target deletion and retention handling in the migration/lifecycle implementation; retain no orphaned access. Do not add tables per notification type/provider, a public recipient list, or a notification for a guest email address without an account. Changing transport alone requires no domain-table redesign.
+
+This table is separate from the optional `notification_outbox` in §9.5: storing in-app history makes missed socket signals recoverable through HTTP; it does not guarantee email dispatch after a process crash. See [scope](PLAN.md#selective-real-time-notifications-planned), [proposed endpoints](API.md#13-selective-real-time-notifications-proposed), and [delivery flow](ARCHITECTURE.md#selective-real-time-notifications-planned).

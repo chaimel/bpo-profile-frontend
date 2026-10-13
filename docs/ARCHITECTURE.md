@@ -420,6 +420,19 @@ Routing:
 - Company inboxes are scoped to the inquiry's company and accepted owner/admin membership. A professional sees their own inquiries; platform admins may moderate across companies. Pending/rejected affiliations confer no company-inbox access.
 - `POST /api/contact` sets `type = platform` server-side, has no company/professional target, and routes to platform admins. It is excluded from provider lead counts.
 
+### Selective real-time notifications (planned)
+
+The [limited event scope](PLAN.md#selective-real-time-notifications-planned) starts with inquiry alerts and notification unread counts. Proposed delivery uses [Laravel broadcasting and Echo](https://laravel.com/framework/docs/broadcasting), with [Reverb](https://laravel.com/framework/docs/reverb) as the WebSocket server. No socket connection or package installation is part of this documentation change.
+
+1. Save the domain change and its per-recipient notification rows in one database transaction. Resolve recipients from the existing inquiry/dashboard policies, deduplicate user IDs, and reuse a stable domain event key on retries. An external inbox email address alone does not create a user notification.
+2. After commit, queue a small `notifications.changed` signal for each eligible recipient. Keep inquiry text, sender contact details, credentials, and claim/invitation tokens out of broadcasts. A failed broadcast does not undo the saved inquiry or notification; HTTP history recovers missed signals.
+3. The signed-in browser subscribes to its authorized private user channel. On a signal, refresh the notification list/count and relevant inbox through ordinary authorized API reads. Read-state changes signal the same user so other tabs refresh. Counts come from the API; duplicate/out-of-order events must not blindly increment the bell.
+4. On connection/reconnection, page focus, or recovery from an outage, fetch current history/counts. While the socket is unavailable, bounded polling every 30–60 seconds on a visible dashboard may be used as fallback; pause hidden tabs and back off failures. Stop subscriptions on logout. WebSocket delivery is an optimization; saved records remain authoritative.
+
+Private-channel authorization must apply this application's Passport-cookie, live-session, CSRF, verified-account, and `auth_version` rules. A socket subscription never grants access to an inquiry. Recheck recipient eligibility before queued delivery and on every history/target read; membership loss removes access to company-scoped notifications. Define and test forced disconnect/revocation for existing sockets when a session/account is invalidated, rather than relying only on the initial handshake. Do not broadcast tenant information on public channels.
+
+Approval/affiliation decisions and invitation acceptance are later additions to this same flow. All other reads/writes stay on HTTP, and one connection can receive multiple notification event types. No per-view analytics broadcasts, chat, or presence are introduced. See [API contracts](API.md#13-selective-real-time-notifications-proposed), [persistent records](DATABASE.md#99-in-app-notification-history-proposed), and [future setup](SETUP.md#future-selective-real-time-notifications).
+
 ### Measurement
 
 The browser sends `view`, `search_impression`, `cta_click`, and `website_click` to `POST /api/events` when the relevant profile/result/action is actually displayed or performed. Each occurrence has a fresh UUID `event_key`, reused on retries; the API validates targets, rate-limits ingestion, and deduplicates that key. SSR fetches, prefetches, and API retries do not generate view events.
